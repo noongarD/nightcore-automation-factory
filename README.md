@@ -96,7 +96,7 @@ The default scripts expect the repository at `C:\NightcoreFactory`. A different 
 can be used through `NIGHTCORE_FACTORY_ROOT`.
 
 ```powershell
-git clone https://github.com/Oliwier305/nightcore-automation-factory.git C:\NightcoreFactory
+git clone https://github.com/noongarD/nightcore-automation-factory.git C:\NightcoreFactory
 cd C:\NightcoreFactory
 
 $env:NIGHTCORE_FACTORY_ROOT = "C:\NightcoreFactory"
