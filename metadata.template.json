@@ -1,0 +1,27 @@
+{
+  "visualArtist": "Nightcore",
+  "title": "",
+  "youtubeTitle": "",
+  "descriptionTemplate": "Listen to {{title}} and subscribe for more.\\n\\n00:00 Intro\\n00:11 {{title}}\\n{{outroTimestamp}} Outro\\n\\nArtwork credit: add source URL here.",
+  "tags": [
+    "nightcore",
+    "sped up",
+    "anime",
+    "music visualizer"
+  ],
+  "privacy": "private",
+  "accentColor": "auto",
+  "lyricsEnabled": true,
+  "lyricsAutoTranscribe": true,
+  "lyricsAutoTimestampText": true,
+  "lyricsWhisperModel": "base",
+  "lyricsLanguage": "en",
+  "lyricsMaxWordsPerLine": 7,
+  "lyricsMaxLineSeconds": 4.2,
+  "lyricsStartSeconds": 11,
+  "lyricsEndPaddingSeconds": 8,
+  "shortsEnabled": true,
+  "shortVisualArtist": "check out now on all streaming platforms!",
+  "shortStartSeconds": 0,
+  "shortDurationSeconds": 30
+}

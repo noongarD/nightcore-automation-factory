@@ -1,0 +1,16 @@
+{
+  "name": "nightcore-automation-factory",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Local-first Nightcore video rendering and publishing pipeline built with n8n, Playwright, FFmpeg and Whisper.",
+  "scripts": {
+    "check": "node scripts/validate-project.cjs",
+    "install:browser": "playwright install chromium"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "playwright": "^1.60.0"
+  }
+}

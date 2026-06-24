@@ -1,0 +1,51 @@
+# Dependencies and caches
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Local configuration and credentials
+.env
+*.secret.*
+credentials/
+
+# n8n runtime data
+.n8n/
+.n8n-files/
+
+# Generated projects and media
+inbox/
+queue/
+outputs/
+work/
+mix-inbox/
+mix-queue/
+mix-outputs/
+mix-work/
+mix-preview/
+
+*.aac
+*.flac
+*.m4a
+*.mp3
+*.mp4
+*.ogg
+*.wav
+*.webm
+
+# User-provided artwork
+*.gif
+*.jpeg
+*.jpg
+*.png
+*.webp
+
+# Keep documented example assets if they are added later
+!docs/**/*.png
+!docs/**/*.jpg
+
+# Logs and operating-system files
+*.log
+Thumbs.db
+.DS_Store

@@ -1,0 +1,307 @@
+{
+  "name": "Nightcore Automation Factory",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -900,
+        0
+      ],
+      "id": "b14e79bc-d4e8-47cc-b343-7fcd55ed7771",
+      "name": "Render inbox"
+    },
+    {
+      "parameters": {
+        "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"C:\\NightcoreFactory\\scripts\\process-inbox.ps1\""
+      },
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        -680,
+        0
+      ],
+      "id": "3bc4dcc5-0e9c-48fd-8234-c982f723ff61",
+      "name": "Render videos"
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = ($json.stdout || \"\").trim();\nconst data = raw ? JSON.parse(raw) : [];\nconst items = Array.isArray(data) ? data : [data];\n\nreturn items\n  .filter((item) => item && item.status === \"rendered\")\n  .map((item) => ({\n    json: {\n      ...item,\n      youtubeTitle: Buffer.from(item.youtubeTitleBase64 || \"\", \"base64\").toString(\"utf8\") || \"Nightcore\",\n      description: Buffer.from(item.descriptionBase64 || \"\", \"base64\").toString(\"utf8\"),\n      tagsCsv: Array.isArray(item.tags) ? item.tags.join(\",\") : \"\",\n    },\n  }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -450,
+        0
+      ],
+      "id": "993422c1-9d87-4838-87bc-78686bb275d2",
+      "name": "Prepare metadata"
+    },
+    {
+      "parameters": {
+        "fileSelector": "={{$json.mp4Path}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1.1,
+      "position": [
+        -210,
+        80
+      ],
+      "id": "e53234ab-8b55-4208-9142-096c7daf6ef2",
+      "name": "Read full video"
+    },
+    {
+      "parameters": {
+        "resource": "video",
+        "operation": "upload",
+        "title": "={{$node[\"Prepare metadata\"].json.youtubeTitle}}",
+        "regionCode": "PL",
+        "categoryId": "10",
+        "options": {
+          "description": "={{$node[\"Prepare metadata\"].json.description}}",
+          "privacyStatus": "private",
+          "tags": "={{$node[\"Prepare metadata\"].json.tagsCsv}}"
+        }
+      },
+      "type": "n8n-nodes-base.youTube",
+      "typeVersion": 1,
+      "position": [
+        20,
+        80
+      ],
+      "id": "41a3a502-b746-4eb8-9e75-f8fc7bdc370e",
+      "name": "Upload full video"
+    },
+    {
+      "parameters": {
+        "amount": 30
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        80
+      ],
+      "id": "28efb048-f7c1-43c3-89af-31a37d0aa47d",
+      "name": "Wait for YouTube"
+    },
+    {
+      "parameters": {
+        "fileSelector": "={{$node[\"Prepare metadata\"].json.thumbnailPath}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1.1,
+      "position": [
+        470,
+        80
+      ],
+      "id": "d2a3b62e-0f63-46a5-a7dc-33ac17a335f7",
+      "name": "Read thumbnail"
+    },
+    {
+      "parameters": {
+        "amount": 10
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        690,
+        80
+      ],
+      "id": "8bf393fa-b7ce-457b-b49f-8367ead3dcd8",
+      "name": "Wait before thumbnail"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://www.googleapis.com/upload/youtube/v3/thumbnails/set",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "videoId",
+              "value": "={{$node[\"Upload full video\"].json.uploadId}}"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "image/jpeg"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "binaryData",
+        "inputDataFieldName": "data",
+        "options": {
+          "timeout": 600000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        920,
+        80
+      ],
+      "id": "967d8bbc-211b-4f81-b3e4-bc63c74ac062",
+      "name": "Set thumbnail"
+    },
+    {
+      "parameters": {
+        "fileSelector": "={{$json.shortMp4Path}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1.1,
+      "position": [
+        -210,
+        -120
+      ],
+      "id": "edbd1c2f-d8fc-4140-8225-8189006d9702",
+      "name": "Read short video"
+    },
+    {
+      "parameters": {
+        "resource": "video",
+        "operation": "upload",
+        "title": "={{$node[\"Prepare metadata\"].json.shortYoutubeTitle}}",
+        "regionCode": "PL",
+        "categoryId": "10",
+        "options": {
+          "description": "={{$node[\"Prepare metadata\"].json.description}}",
+          "privacyStatus": "private",
+          "tags": "={{$node[\"Prepare metadata\"].json.tagsCsv}}"
+        }
+      },
+      "type": "n8n-nodes-base.youTube",
+      "typeVersion": 1,
+      "position": [
+        20,
+        -120
+      ],
+      "id": "9cfbc8b2-da5d-4e4c-85fa-381cd762c2c7",
+      "name": "Upload short"
+    }
+  ],
+  "connections": {
+    "Render inbox": {
+      "main": [
+        [
+          {
+            "node": "Render videos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Render videos": {
+      "main": [
+        [
+          {
+            "node": "Prepare metadata",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare metadata": {
+      "main": [
+        [
+          {
+            "node": "Read full video",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Read short video",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read full video": {
+      "main": [
+        [
+          {
+            "node": "Upload full video",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload full video": {
+      "main": [
+        [
+          {
+            "node": "Wait for YouTube",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait for YouTube": {
+      "main": [
+        [
+          {
+            "node": "Read thumbnail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read thumbnail": {
+      "main": [
+        [
+          {
+            "node": "Wait before thumbnail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait before thumbnail": {
+      "main": [
+        [
+          {
+            "node": "Set thumbnail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read short video": {
+      "main": [
+        [
+          {
+            "node": "Upload short",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "active": false,
+  "tags": []
+}

@@ -1,0 +1,1095 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nightcore Pulsing Visualizer 9:16 (TikTok/Shorts)</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;700&display=swap');
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #000;
+            font-family: 'Oswald', sans-serif;
+            color: white;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #canvas-container {
+            position: relative;
+            box-shadow: 0 0 50px rgba(0,0,0,0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            width: 100%;
+            height: 100%;
+        }
+
+        #canvas {
+            background-color: #111;
+            z-index: 1;
+        }
+
+        #controls {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.85);
+            padding: 20px;
+            border-radius: 10px;
+            z-index: 10;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.1);
+            transition: opacity 0.3s;
+            font-family: Arial, sans-serif;
+            width: 250px;
+        }
+
+        .controls-hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .tab-btn {
+            flex: 1;
+            padding: 8px;
+            background: #333;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            font-family: Arial, sans-serif;
+            transition: background 0.3s;
+        }
+
+        .tab-btn.active {
+            background: #00d0ff;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .input-group {
+            margin-bottom: 12px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        label {
+            font-size: 0.75rem;
+            color: #aaa;
+            margin-bottom: 4px;
+            text-transform: uppercase;
+        }
+
+        input[type="text"], input[type="file"] {
+            background: #222;
+            border: 1px solid #444;
+            color: white;
+            padding: 6px;
+            border-radius: 4px;
+            font-size: 0.9rem;
+        }
+
+        input[type="color"] {
+            padding: 0;
+            height: 35px;
+            cursor: pointer;
+            border: 1px solid #444;
+            border-radius: 4px;
+            width: 100%;
+            background: #222;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        button {
+            flex: 1;
+            padding: 10px;
+            background: #00d0ff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: filter 0.2s;
+        }
+
+        button:hover { filter: brightness(1.2); }
+        button:disabled { background: #555; filter: none; cursor: not-allowed; }
+
+        #hide-btn { background: #444; width: 100%; margin-top: 8px; }
+        #hide-btn:hover { background: #666; filter: none; }
+
+        #status {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            color: #00d0ff;
+            z-index: 10;
+            font-weight: bold;
+            display: none;
+            font-family: Arial, sans-serif;
+            text-shadow: 1px 1px 2px black;
+        }
+
+        #font-loader {
+            position: absolute;
+            visibility: hidden;
+            font-family: 'Oswald', sans-serif;
+        }
+    </style>
+</head>
+<body>
+    <div id="font-loader">Oswald Loader</div>
+
+    <div id="canvas-container">
+        <canvas id="canvas"></canvas>
+    </div>
+
+    <div id="status">🔴 NAGRYWANIE FULL HD 9:16...</div>
+
+    <div id="controls">
+        <h3 style="margin-top: 0; color: #00d0ff; font-size: 1.1rem; transition: color 0.3s;" id="menu-title">Ustawienia TikTok/Shorts</h3>
+
+        <div class="tabs">
+            <button id="tab-vis" class="tab-btn active">Wizualizer</button>
+            <button id="tab-thumb" class="tab-btn">Miniaturka</button>
+        </div>
+
+        <div class="input-group">
+            <label>Kolor Akcentu (Auto / Ręczny)</label>
+            <input type="color" id="accent-color-picker" value="#00d0ff">
+        </div>
+
+        <div id="content-vis" class="tab-content active">
+            <div class="input-group">
+                <label>Tło Główne (Ostra jakość)</label>
+                <input type="file" id="image-upload" accept="image/*">
+            </div>
+
+            <div class="input-group">
+                <label>Audio (MP3/WAV)</label>
+                <input type="file" id="audio-upload" accept="audio/*">
+            </div>
+
+            <div class="input-group">
+                <label>Artysta</label>
+                <input type="text" id="artist-input" value="ADITYA SHARMA">
+            </div>
+
+            <div class="input-group">
+                <label>Tytuł Utworu</label>
+                <input type="text" id="title-input" value="BAD IDEA">
+            </div>
+
+            <div class="btn-group">
+                <button id="play-btn" class="action-btn" disabled>Play</button>
+                <button id="record-btn" class="action-btn" disabled>Nagraj Wideo</button>
+            </div>
+        </div>
+
+        <div id="content-thumb" class="tab-content">
+            <div class="input-group">
+                <label>Inne Tło (Opcjonalnie)</label>
+                <input type="file" id="thumb-image-upload" accept="image/*">
+                <small style="color:#777; font-size:0.7rem; margin-top:4px;">Zostaw puste, by użyć tła z wizualizera.</small>
+            </div>
+
+            <div class="input-group">
+                <label>Artysta (Na miniaturce)</label>
+                <input type="text" id="thumb-artist" value="ADITYA SHARMA">
+            </div>
+
+            <div class="input-group">
+                <label>Tytuł Utworu (Na miniaturce)</label>
+                <input type="text" id="thumb-title" value="BAD IDEA">
+            </div>
+
+            <button id="download-thumb-btn" class="action-btn" style="width: 100%; margin-top: 10px;">Pobierz Miniaturkę</button>
+        </div>
+
+        <button id="hide-btn">Ukryj UI (Spacja)</button>
+    </div>
+
+    <script>
+        const audioUpload = document.getElementById('audio-upload');
+        const imageUpload = document.getElementById('image-upload');
+        const artistInput = document.getElementById('artist-input');
+        const titleInput = document.getElementById('title-input');
+        const playBtn = document.getElementById('play-btn');
+        const recordBtn = document.getElementById('record-btn');
+        const hideBtn = document.getElementById('hide-btn');
+        const controls = document.getElementById('controls');
+        const statusEl = document.getElementById('status');
+        const canvas = document.getElementById('canvas');
+        const menuTitle = document.getElementById('menu-title');
+        const accentColorPicker = document.getElementById('accent-color-picker');
+        const ctx = canvas.getContext('2d');
+
+        const tabVis = document.getElementById('tab-vis');
+        const tabThumb = document.getElementById('tab-thumb');
+        const contentVis = document.getElementById('content-vis');
+        const contentThumb = document.getElementById('content-thumb');
+        const thumbImageUpload = document.getElementById('thumb-image-upload');
+        const thumbArtist = document.getElementById('thumb-artist');
+        const thumbTitle = document.getElementById('thumb-title');
+        const downloadThumbBtn = document.getElementById('download-thumb-btn');
+
+        let audio = new Audio();
+        let audioCtx, analyser, source, dest;
+        let isPlaying = false;
+        let isRecording = false;
+        let mediaRecorder;
+        let recordedChunks = [];
+        let animationFrameId = null;
+
+        let bgImgObj = new Image();
+        let thumbSpecificImgObj = new Image();
+
+        // --- BAZA LOGOTYPÓW DO INTRA ---
+        const spotifyImg = new Image();
+        spotifyImg.src = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIiB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCI+PHBhdGggZmlsbD0iI2ZmZmZmZiIgZD0iTTUwIDBDMjIuNCAwIDAgMjIuNCAwIDUwczIyLjQgNTAgNTAgNTAgNTAtMjIuNCA1MC01MFM3Ny42IDAgNTAgMHptMjMuNiA3Mi4xYy0xLjEgMS42LTMuMiAyLjEtNC44IDEuMS0xMy4xLTcuOC0yOS42LTkuNi00OS4xLTUuMy0xLjguNC0zLjYtLjgtNC4xLTIuNS0uNC0xLjguOC0zLjYgMi41LTQuMSAyMS4xLTQuOCAzOS4xLTIuNyA1NC4yIDYuMSAxLjYgMSAyLjEgMy4yIDEuMyA0Ljd6bTUuOS0xNi43Yy0xLjMgMi4xLTQuMSAyLjgtNi4yIDEuNS0xNS4xLTkuMS0zOC4zLTExLjgtNTUuOC02LjUtMi4zLjctNC43LS41LTUuNC0yLjgtLjctMi4zLjUtNC43IDIuOC01LjQgMjAuMS01LjkgNDUuOS0yLjkgNjMuMiA3LjQgMi4xIDEuMiAyLjggNCAxLjQgNS44em0uNy0xNy4xYy0xOC4xLTEwLjctNDcuOC0xMS43LTY1LTYuNS0yLjguOC01LjctLjctNi41LTMuNS0uOC0yLjguNy01LjcgMy41LTYuNSAyMC4yLTUuOSA1My40LTQuOCA3NC4zIDcuNiAyLjUgMS41IDMuMyA0LjggMS44IDcuMy0xLjQgMi40LTQuNyAzLjItNy4xIDEuNnoiLz48L3N2Zz4=";
+        const appleImg = new Image();
+        appleImg.src = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzODQgNTEyIiB3aWR0aD0iMzg0IiBoZWlnaHQ9IjUxMiI+PHBhdGggZmlsbD0iI2ZmZmZmZiIgZD0iTTMxOC43IDI2OC43Yy0uMi0zNi43IDE2LjQtNjQuNCA1MC04NC44LTE4LjgtMjYuOS00Ny4yLTQxLjctODQuNy00NC42LTM1LjUtMi44LTc0LjMgMjAuNy04OC41IDIwLjctMTUgMC00OS40LTE5LjctNzYuNC0xOS43QzYzLjMgMTQxLjIgNCAxODQuOCA0IDI3My41cTAgMzkuMyAxNC40IDgxLjJjMTIuOCAzNi43IDU5IDEyNi43IDEwNy4yIDEyNS4yIDI1LjItLjYgNDMtMTcuOSA3NS44LTE3LjkgMzEuOCAwIDQ4LjMgMTcuOSA3Ni40IDE3LjkgNDguNi0uNyA5MC40LTgyLjUgMTAyLjYtMTE5LjMtNjUuMi0zMC43LTYxLjctOTAtNjEuNy05MS45em0tNTYuNi0xNjQuMmMyNy4zLTMyLjQgMjQuOC02MS45IDI0LTcyLjUtMjQuMSAxLjQtNTIgMTYuNC02Ny45IDM0LjktMTcuNSAxOS44LTI3LjggNDQuMy0yNS42IDcxLjkgMjYuMSAyIDQ5LjktMTEuNCA2OS41LTM0LjN6Ii8+PC9zdmc+";
+        const ytMusicImg = new Image();
+        ytMusicImg.src = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA1MTIgNTEyIiB3aWR0aD0iNTEyIiBoZWlnaHQ9IjUxMiI+PHBhdGggZmlsbD0iI2ZmZmZmZiIgZD0iTTI1NiAwQzExNC42IDAgMCAxMTQuNiAwIDI1NnMxMTQuNiAyNTYgMjU2IDI1NiAyNTYtMTE0LjYgMjU2LTI1NlMzOTcuNCAwIDI1NiAwem0wIDEwMS42Yzg1LjEgMCAxNTQuNCA2OS4zIDE1NC40IDE1NC40UzM0MS4xIDQxMC40IDI1NiA0MTAuNCAxMDEuNiAzNDEuMSAxMDEuNiAyNTYgMTcwLjkgMTAxLjYgMjU2IDEwMS42em0tNTAuNSA4Ni44djEzNS4yTDMyOSAyNTZsLTEyMy41LTY3LjZ6Ii8+PC9zdmc+";
+        const tiktokImg = new Image();
+        tiktokImg.src = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0NDggNTEyIiB3aWR0aD0iNDQ4IiBoZWlnaHQ9IjUxMiI+PHBhdGggZmlsbD0iI2ZmZmZmZiIgZD0iTTQ0OCAyMDkuOTFhMjEwLjA2IDIxMC4wNiAwIDAgMS0xMjIuNzctMzkuMjV2MTc4LjcyQTE2Mi41NSAxNjIuNTUgMCAxIDEgMTg1IDE4OC4zMXY4OS44OWE3NC42MiA3NC42MiAwIDEgMCA1Mi4yMyA3MS4xOFYwaDg4YTEyMS4xOCAxMjEuMTggMCAwIDAgMS44NiAyMi4xN2gwQTEyMi4xOCAxMjIuMTggMCAwIDAgMzgxIDEwMi4zOWExMjEuNDMgMTIxLjQzIDAgMCAwIDY3IDIwLjE0eiIvPjwvc3ZnPg==";
+        const amazonImg = new Image();
+        amazonImg.src = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMjAgNDAiIHdpZHRoPSIxMjAiIGhlaWdodD0iNDAiPgogIDx0ZXh0IHg9IjYwIiB5PSIyMCIgZm9udC1mYW1pbHk9InN5c3RlbS11aSwgLWFwcGxlLXN5c3RlbSwgc2Fucy1zZXJpZiIgZm9udC13ZWlnaHQ9ImJvbGQiIGZvbnQtc2l6ZT0iMjAiIGZpbGw9IiNmZmYiIHRleHQtYW5jaG9yPSJtaWRkbGUiPmFtYXpvbjwvdGV4dD4KICA8dGV4dCB4PSI2MCIgeT0iMzAiIGZvbnQtZmFtaWx5PSJzeXN0ZW0tdWksIC1hcHBsZS1zeXN0ZW0sIHNhbnMtc2VyaWYiIGZvbnQtd2VpZ2h0PSJub3JtYWwiIGZvbnQtc2l6ZT0iMTAiIGZpbGw9IiNmZmYiIHRleHQtYW5jaG9yPSJtaWRkbGUiPm11c2ljPC90ZXh0PgogIDxwYXRoIGQ9Ik0gMzUgMzQgUSA2MCA0MiA4NSAzNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZmZmIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgogIDxwYXRoIGQ9Ik0gODUgMzQgTCA4MCAzMSBMIDgzICgzOCBaIiBmaWxsPSIjZmZmIi8+Cjwvc3ZnPg==";
+        const deezerImg = new Image();
+        deezerImg.src = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgd2lkdGg9IjI0IiBoZWlnaHQ9IjI0Ij48cGF0aCBmaWxsPSIjZmZmZmZmIiBkPSJNMTAgNGg0djRoLTRWNHogTTQgMTBoNHY0SDR2LTR6IE0xMCAxMGg0djRoLTR2LTR6IE0xNiAxMGg0djRoLTR2LTR6IE00IDE2aDR2NEg0di00eiBNMTAgMTZoNHY0aC00di00eiBNMTYgMTZoNHY0aC00di00eiIvPjwvc3ZnPg==";
+
+        // Siatka i proporcje logotypów
+        const logosConfig = [
+            { img: spotifyImg, w: 130, h: 130, offsetY: 0 },
+            { img: appleImg,   w: 105, h: 130, offsetY: -5 },
+            { img: ytMusicImg, w: 135, h: 135, offsetY: 0 },
+            { img: tiktokImg,  w: 110, h: 130, offsetY: -5 },
+            { img: amazonImg,  w: 200, h: 66,  offsetY: -5 },
+            { img: deezerImg,  w: 120, h: 120, offsetY: 0 }
+        ];
+
+        // --- RASTERYZACJA SVG NA PŁASKIE PIKSELE ---
+        window.addEventListener('load', () => {
+            logosConfig.forEach(logo => {
+                const cellH = 180;
+                const drawW = cellH * (logo.w / logo.h);
+                const finalW = drawW > 240 ? 240 : drawW;
+                const finalH = drawW > 240 ? 240 * (logo.h / logo.w) : cellH;
+
+                const c = document.createElement('canvas');
+                c.width = finalW;
+                c.height = finalH;
+                c.getContext('2d').drawImage(logo.img, 0, 0, finalW, finalH);
+
+                logo.rasterized = c;
+                logo.finalW = finalW;
+                logo.finalH = finalH;
+            });
+        });
+
+        let accentGlowColor = "#00d0ff";
+        let thumbAccentColor = accentGlowColor;
+
+        let currentScale = 1.0;
+        let currentMode = 'vis';
+
+        let recordStartTime = 0;
+        let showIntro = false;
+
+        accentColorPicker.addEventListener('input', (e) => {
+            const hexColor = e.target.value;
+            accentGlowColor = hexColor;
+            thumbAccentColor = hexColor;
+
+            menuTitle.style.color = accentGlowColor;
+            playBtn.style.background = accentGlowColor;
+            recordBtn.style.background = accentGlowColor;
+            downloadThumbBtn.style.background = accentGlowColor;
+            statusEl.style.color = accentGlowColor;
+
+            updateTabColors();
+            if (!isPlaying && !isRecording) drawStaticFrame();
+        });
+
+        function updateTabColors() {
+            tabVis.style.background = tabVis.classList.contains('active') ? accentGlowColor : '#333';
+            tabThumb.style.background = tabThumb.classList.contains('active') ? accentGlowColor : '#333';
+        }
+
+        tabVis.addEventListener('click', () => {
+            currentMode = 'vis';
+            tabVis.classList.add('active');
+            tabThumb.classList.remove('active');
+            contentVis.classList.add('active');
+            contentThumb.classList.remove('active');
+            updateTabColors();
+            if (!isPlaying && !isRecording) drawStaticFrame();
+        });
+
+        tabThumb.addEventListener('click', () => {
+            currentMode = 'thumb';
+            tabThumb.classList.add('active');
+            tabVis.classList.remove('active');
+            contentThumb.classList.add('active');
+            contentVis.classList.remove('active');
+            updateTabColors();
+            if (!isPlaying && !isRecording) drawStaticFrame();
+        });
+
+        artistInput.addEventListener('input', () => {
+            thumbArtist.value = artistInput.value;
+            if(!isPlaying && currentMode === 'vis') drawStaticFrame();
+        });
+        titleInput.addEventListener('input', () => {
+            thumbTitle.value = titleInput.value;
+            if(!isPlaying && currentMode === 'vis') drawStaticFrame();
+        });
+        thumbArtist.addEventListener('input', () => {
+            if(!isPlaying && currentMode === 'thumb') drawStaticFrame();
+        });
+        thumbTitle.addEventListener('input', () => {
+            if(!isPlaying && currentMode === 'thumb') drawStaticFrame();
+        });
+
+        function resizeCanvas() {
+            canvas.width = 1080;
+            canvas.height = 1920;
+
+            const windowHeight = window.innerHeight;
+            const targetWidth = (windowHeight * 9) / 16;
+
+            if (window.innerWidth < targetWidth) {
+                canvas.style.width = window.innerWidth + 'px';
+                canvas.style.height = (window.innerWidth * 16 / 9) + 'px';
+            } else {
+                canvas.style.width = targetWidth + 'px';
+                canvas.style.height = windowHeight + 'px';
+            }
+
+            if (!isPlaying && !isRecording) drawStaticFrame();
+        }
+        window.addEventListener('resize', resizeCanvas);
+
+        function extractColorsFromImage(imgObj, callback) {
+            const sampleCanvas = document.createElement('canvas');
+            const sCtx = sampleCanvas.getContext('2d');
+            sampleCanvas.width = 64;
+            sampleCanvas.height = 64;
+            sCtx.drawImage(imgObj, 0, 0, 64, 64);
+            const p = sCtx.getImageData(0, 0, 64, 64).data;
+
+            let colorBins = {};
+            let maxBinCount = 0;
+            let dominantColor = [0, 208, 255];
+
+            for (let i = 0; i < p.length; i += 4) {
+                let r = p[i], g = p[i+1], b = p[i+2];
+                let max = Math.max(r, g, b), min = Math.min(r, g, b);
+                let l = (max + min) / 2;
+                let s = (max === min) ? 0 : (l > 127 ? (max - min) / (510 - max - min) : (max - min) / (max + min));
+
+                if (s < 0.2 || l < 30 || l > 225) continue;
+
+                let rQ = Math.round(r / 32) * 32;
+                let gQ = Math.round(g / 32) * 32;
+                let bQ = Math.round(b / 32) * 32;
+                let bin = `${rQ},${gQ},${bQ}`;
+
+                if (!colorBins[bin]) colorBins[bin] = { count: 0, r: 0, g: 0, b: 0 };
+                colorBins[bin].count++;
+                colorBins[bin].r += r;
+                colorBins[bin].g += g;
+                colorBins[bin].b += b;
+
+                if (colorBins[bin].count > maxBinCount) {
+                    maxBinCount = colorBins[bin].count;
+                    dominantColor = [
+                        Math.round(colorBins[bin].r / colorBins[bin].count),
+                        Math.round(colorBins[bin].g / colorBins[bin].count),
+                        Math.round(colorBins[bin].b / colorBins[bin].count)
+                    ];
+                }
+            }
+
+            if (maxBinCount === 0) dominantColor = [255, 255, 255];
+            callback(dominantColor);
+        }
+
+        function rgbToHex(r, g, b) {
+            return "#" + (1 << 24 | r << 16 | g << 8 | b).toString(16).slice(1);
+        }
+
+        function applyNewColor(hexColor, isThumbSpecific = false) {
+            if (isThumbSpecific) {
+                thumbAccentColor = hexColor;
+            } else {
+                accentGlowColor = hexColor;
+                thumbAccentColor = hexColor;
+                accentColorPicker.value = hexColor;
+
+                menuTitle.style.color = accentGlowColor;
+                playBtn.style.background = accentGlowColor;
+                recordBtn.style.background = accentGlowColor;
+                downloadThumbBtn.style.background = accentGlowColor;
+                statusEl.style.color = accentGlowColor;
+                updateTabColors();
+            }
+            if (!isPlaying && !isRecording) drawStaticFrame();
+        }
+
+        imageUpload.addEventListener('change', function() {
+            if (this.files[0]) {
+                const url = URL.createObjectURL(this.files[0]);
+                bgImgObj.onload = function() {
+                    extractColorsFromImage(bgImgObj, (vibrantPixel) => {
+                        applyNewColor(rgbToHex(vibrantPixel[0], vibrantPixel[1], vibrantPixel[2]), false);
+                    });
+                };
+                bgImgObj.src = url;
+            }
+        });
+
+        thumbImageUpload.addEventListener('change', function() {
+            if (this.files[0]) {
+                const url = URL.createObjectURL(this.files[0]);
+                thumbSpecificImgObj.onload = function() {
+                    extractColorsFromImage(thumbSpecificImgObj, (vibrantPixel) => {
+                        applyNewColor(rgbToHex(vibrantPixel[0], vibrantPixel[1], vibrantPixel[2]), true);
+                    });
+                };
+                thumbSpecificImgObj.src = url;
+            } else {
+                thumbSpecificImgObj.src = '';
+                thumbAccentColor = accentGlowColor;
+                if (!isPlaying && currentMode === 'thumb') drawStaticFrame();
+            }
+        });
+
+        downloadThumbBtn.addEventListener('click', () => {
+            const tCanvas = document.createElement('canvas');
+            tCanvas.width = 1080;
+            tCanvas.height = 1920;
+            const tCtx = tCanvas.getContext('2d');
+
+            const sourceImg = thumbSpecificImgObj.src ? thumbSpecificImgObj : bgImgObj;
+            let currentAccent = thumbSpecificImgObj.src ? thumbAccentColor : accentGlowColor;
+
+            if (sourceImg.src) {
+                let imgRatio = sourceImg.width / sourceImg.height;
+                let canvasRatio = 1080 / 1920;
+                let drawWidth, drawHeight, drawX, drawY;
+
+                if (imgRatio > canvasRatio) {
+                    drawHeight = 1920;
+                    drawWidth = sourceImg.width * (1920 / sourceImg.height);
+                    drawX = (1080 - drawWidth) / 2;
+                    drawY = 0;
+                } else {
+                    drawWidth = 1080;
+                    drawHeight = sourceImg.height * (1080 / sourceImg.width);
+                    drawX = 0;
+                    drawY = (1920 - drawHeight) / 2;
+                }
+                tCtx.drawImage(sourceImg, drawX, drawY, drawWidth, drawHeight);
+            } else {
+                let grad = tCtx.createLinearGradient(0, 0, 1080, 1920);
+                grad.addColorStop(0, '#1a1a2e');
+                grad.addColorStop(1, '#16213e');
+                tCtx.fillStyle = grad;
+                tCtx.fillRect(0, 0, 1080, 1920);
+            }
+
+            let darkGrad = tCtx.createLinearGradient(0, 1920 * 0.5, 0, 1920);
+            darkGrad.addColorStop(0, 'transparent');
+            darkGrad.addColorStop(1, 'rgba(0,0,0,0.85)');
+            tCtx.fillStyle = darkGrad;
+            tCtx.fillRect(0, 1920 * 0.5, 1080, 1920 * 0.5);
+
+            let thumbTitleSize = Math.floor(1080 * 0.14);
+            let thumbArtistSize = Math.floor(1080 * 0.05);
+            let bottomMargin = 1920 * 0.94;
+            let maxTextWidth = 1080 * 0.9;
+
+            tCtx.textAlign = "center";
+            tCtx.lineJoin = 'round';
+
+            tCtx.font = `400 ${thumbArtistSize}px 'Oswald', sans-serif`;
+            tCtx.shadowColor = "rgba(0,0,0,0.8)";
+            tCtx.shadowBlur = 10;
+            tCtx.shadowOffsetX = 3;
+            tCtx.shadowOffsetY = 3;
+            tCtx.lineWidth = thumbArtistSize * 0.12;
+            tCtx.strokeStyle = currentAccent;
+            tCtx.strokeText(thumbArtist.value.toUpperCase(), 1080 / 2, bottomMargin - thumbTitleSize - 15, maxTextWidth);
+
+            tCtx.shadowColor = "transparent";
+            tCtx.fillStyle = "white";
+            tCtx.fillText(thumbArtist.value.toUpperCase(), 1080 / 2, bottomMargin - thumbTitleSize - 15, maxTextWidth);
+
+            tCtx.font = `700 ${thumbTitleSize}px 'Oswald', sans-serif`;
+            tCtx.shadowColor = "rgba(0,0,0,0.85)";
+            tCtx.shadowBlur = 15;
+            tCtx.shadowOffsetX = 5;
+            tCtx.shadowOffsetY = 5;
+            tCtx.lineWidth = thumbTitleSize * 0.12;
+            tCtx.strokeStyle = currentAccent;
+            tCtx.strokeText(thumbTitle.value.toUpperCase(), 1080 / 2, bottomMargin, maxTextWidth);
+
+            tCtx.shadowColor = "transparent";
+            tCtx.fillStyle = "white";
+            tCtx.fillText(thumbTitle.value.toUpperCase(), 1080 / 2, bottomMargin, maxTextWidth);
+
+            const link = document.createElement('a');
+            link.download = 'Nightcore_Miniaturka_TikTok.jpg';
+            link.href = tCanvas.toDataURL('image/jpeg', 0.95);
+            link.click();
+        });
+
+        function drawBackground() {
+            let imgToDraw = (currentMode === 'thumb' && thumbSpecificImgObj.src) ? thumbSpecificImgObj : bgImgObj;
+
+            if (imgToDraw.src) {
+                let imgRatio = imgToDraw.width / imgToDraw.height;
+                let canvasRatio = canvas.width / canvas.height;
+                let drawWidth, drawHeight, drawX, drawY;
+
+                const overshootX = canvas.width * 0.16;
+                const overshootY = canvas.height * 0.12;
+
+                if (imgRatio > canvasRatio) {
+                    drawHeight = canvas.height + overshootY;
+                    drawWidth = imgToDraw.width * (drawHeight / imgToDraw.height);
+                    drawX = (canvas.width - drawWidth) / 2;
+                    drawY = -overshootY/2;
+                } else {
+                    drawWidth = canvas.width + overshootX;
+                    drawHeight = imgToDraw.height * (drawWidth / imgToDraw.width);
+                    drawX = -overshootX/2;
+                    drawY = (canvas.height - drawHeight) / 2;
+                }
+
+                ctx.drawImage(imgToDraw, drawX, drawY, drawWidth, drawHeight);
+            } else {
+                let grad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+                grad.addColorStop(0, '#1a1a2e');
+                grad.addColorStop(1, '#16213e');
+                ctx.fillStyle = grad;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+            }
+
+            let darkGrad = ctx.createLinearGradient(0, canvas.height * 0.5, 0, canvas.height);
+            darkGrad.addColorStop(0, 'transparent');
+            darkGrad.addColorStop(1, 'rgba(0,0,0,0.85)');
+            ctx.fillStyle = darkGrad;
+            ctx.fillRect(0, canvas.height * 0.5, canvas.width, canvas.height * 0.5);
+        }
+
+        function drawText() {
+            let titleSize = currentMode === 'thumb' ? Math.floor(canvas.width * 0.14) : Math.floor(canvas.width * 0.09);
+            let artistSize = currentMode === 'thumb' ? Math.floor(canvas.width * 0.05) : Math.floor(canvas.width * 0.035);
+            let bottomMargin = canvas.height * 0.94;
+            let maxTextWidth = canvas.width * 0.90;
+
+            let displayArtist = currentMode === 'thumb' ? thumbArtist.value : artistInput.value;
+            let displayTitle = currentMode === 'thumb' ? thumbTitle.value : titleInput.value;
+            let currentAccent = (currentMode === 'thumb' && thumbSpecificImgObj.src) ? thumbAccentColor : accentGlowColor;
+
+            ctx.textAlign = "center";
+            ctx.lineJoin = 'round';
+
+            ctx.font = `400 ${artistSize}px 'Oswald', sans-serif`;
+
+            if (currentMode === 'thumb') {
+                ctx.shadowColor = "rgba(0,0,0,0.8)";
+                ctx.shadowBlur = 10;
+                ctx.shadowOffsetX = 3;
+                ctx.shadowOffsetY = 3;
+                ctx.lineWidth = artistSize * 0.12;
+                ctx.strokeStyle = currentAccent;
+                ctx.strokeText(displayArtist.toUpperCase(), canvas.width / 2, bottomMargin - titleSize - 15, maxTextWidth);
+
+                ctx.shadowColor = "transparent";
+                ctx.fillStyle = "white";
+            } else {
+                ctx.shadowColor = "rgba(0,0,0,0.8)";
+                ctx.shadowBlur = 4;
+                ctx.shadowOffsetX = 1;
+                ctx.shadowOffsetY = 1;
+                ctx.fillStyle = "rgba(255,255,255,0.85)";
+            }
+            ctx.fillText(displayArtist.toUpperCase(), canvas.width / 2, bottomMargin - titleSize - 15, maxTextWidth);
+
+            ctx.font = `700 ${titleSize}px 'Oswald', sans-serif`;
+
+            if (currentMode === 'thumb') {
+                ctx.shadowColor = "rgba(0,0,0,0.85)";
+                ctx.shadowBlur = 15;
+                ctx.shadowOffsetX = 5;
+                ctx.shadowOffsetY = 5;
+                ctx.lineWidth = titleSize * 0.12;
+                ctx.strokeStyle = currentAccent;
+                ctx.strokeText(displayTitle.toUpperCase(), canvas.width / 2, bottomMargin, maxTextWidth);
+
+                ctx.shadowColor = "transparent";
+                ctx.fillStyle = "white";
+            } else {
+                ctx.shadowColor = "rgba(0,0,0,0.8)";
+                ctx.shadowBlur = 4;
+                ctx.shadowOffsetX = 1;
+                ctx.shadowOffsetY = 1;
+                ctx.fillStyle = "white";
+            }
+            ctx.fillText(displayTitle.toUpperCase(), canvas.width / 2, bottomMargin, maxTextWidth);
+        }
+
+        function wrapLyricText(text, maxWidth, maxLines) {
+            const words = String(text || "").trim().split(/\s+/).filter(Boolean);
+            const lines = [];
+            let currentLine = "";
+
+            words.forEach(word => {
+                const candidate = currentLine ? `${currentLine} ${word}` : word;
+                if (ctx.measureText(candidate).width <= maxWidth || !currentLine) {
+                    currentLine = candidate;
+                    return;
+                }
+                lines.push(currentLine);
+                currentLine = word;
+            });
+
+            if (currentLine) lines.push(currentLine);
+            if (lines.length <= maxLines) return lines;
+
+            const trimmed = lines.slice(0, maxLines);
+            trimmed[maxLines - 1] = `${trimmed[maxLines - 1]}...`;
+            return trimmed;
+        }
+
+        function getActiveLyric(currentTime) {
+            const lyrics = Array.isArray(window.__nightcoreLyrics) ? window.__nightcoreLyrics : [];
+            return lyrics.find(line => currentTime >= line.start - 0.04 && currentTime <= line.end + 0.04);
+        }
+
+        function drawLyrics() {
+            const options = window.__nightcoreLyricsOptions || {};
+            if (currentMode !== 'vis' || options.enabled === false) return;
+
+            const activeLyric = getActiveLyric(audio.currentTime || 0);
+            if (!activeLyric) return;
+
+            const now = audio.currentTime || 0;
+            const fadeSeconds = 0.22;
+            const fadeIn = Math.min(1, Math.max(0, (now - activeLyric.start) / fadeSeconds));
+            const fadeOut = Math.min(1, Math.max(0, (activeLyric.end - now) / fadeSeconds));
+            const alpha = Math.min(fadeIn, fadeOut, 1);
+            if (alpha <= 0) return;
+
+            const fontSize = Math.max(42, Math.floor(canvas.width * 0.072));
+            const lineHeight = fontSize * 1.08;
+            const maxWidth = canvas.width * 0.86;
+
+            ctx.save();
+            ctx.globalAlpha = alpha;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.lineJoin = "round";
+            ctx.font = `700 ${fontSize}px 'Oswald', sans-serif`;
+
+            const lines = wrapLyricText(activeLyric.text.toUpperCase(), maxWidth, 2);
+            const bandHeight = Math.max(canvas.height * 0.07, lines.length * lineHeight + fontSize * 0.55);
+            const centerY = bandHeight / 2;
+            const startY = centerY - ((lines.length - 1) * lineHeight) / 2;
+
+            ctx.shadowBlur = 0;
+            ctx.fillStyle = "rgba(0,0,0,0.34)";
+            ctx.fillRect(0, 0, canvas.width, bandHeight);
+            ctx.fillStyle = "rgba(255,255,255,0.16)";
+            ctx.fillRect(0, bandHeight - 1, canvas.width, 1);
+
+            lines.forEach((line, index) => {
+                const y = startY + index * lineHeight;
+                ctx.shadowColor = "rgba(0,0,0,0.9)";
+                ctx.shadowBlur = 14;
+                ctx.lineWidth = fontSize * 0.22;
+                ctx.strokeStyle = "rgba(0,0,0,0.95)";
+                ctx.strokeText(line, canvas.width / 2, y, maxWidth);
+
+                ctx.shadowColor = accentGlowColor;
+                ctx.shadowBlur = 26;
+                ctx.lineWidth = fontSize * 0.08;
+                ctx.strokeStyle = accentGlowColor;
+                ctx.strokeText(line, canvas.width / 2, y, maxWidth);
+
+                ctx.shadowBlur = 0;
+                ctx.fillStyle = "white";
+                ctx.fillText(line, canvas.width / 2, y, maxWidth);
+            });
+
+            ctx.restore();
+        }
+
+        function drawStaticFrame() {
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            drawBackground();
+
+            if (currentMode === 'vis') {
+                ctx.shadowBlur = 25;
+                ctx.shadowColor = accentGlowColor;
+                ctx.beginPath();
+                ctx.moveTo(0, canvas.height + 10);
+                ctx.lineTo(0, canvas.height - 5);
+                ctx.lineTo(canvas.width, canvas.height - 5);
+                ctx.lineTo(canvas.width, canvas.height + 10);
+                ctx.closePath();
+
+                ctx.fillStyle = "rgba(10, 10, 10, 0.95)";
+                ctx.fill();
+
+                ctx.lineWidth = 4;
+                ctx.strokeStyle = accentGlowColor;
+                ctx.stroke();
+                ctx.shadowBlur = 0;
+            }
+
+            drawText();
+            drawLyrics();
+        }
+
+        audioUpload.addEventListener('change', function() {
+            if (this.files[0]) {
+                const url = URL.createObjectURL(this.files[0]);
+                audio.src = url;
+                audio.load();
+                playBtn.disabled = false;
+                recordBtn.disabled = false;
+            }
+        });
+
+        hideBtn.addEventListener('click', () => controls.classList.add('controls-hidden'));
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                controls.classList.toggle('controls-hidden');
+            }
+        });
+
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioCtx.createAnalyser();
+
+                analyser.fftSize = 256;
+                analyser.maxDecibels = 0;
+                analyser.minDecibels = -85;
+                analyser.smoothingTimeConstant = 0.85;
+
+                source = audioCtx.createMediaElementSource(audio);
+                source.connect(analyser);
+                analyser.connect(audioCtx.destination);
+
+                dest = audioCtx.createMediaStreamDestination();
+                analyser.connect(dest);
+            }
+        }
+
+        playBtn.addEventListener('click', () => {
+            if (currentMode === 'thumb') tabVis.click();
+
+            initAudio();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+
+            if (isPlaying) {
+                audio.pause();
+                isPlaying = false;
+                playBtn.innerText = "Play";
+                if (animationFrameId) cancelAnimationFrame(animationFrameId);
+            } else {
+                audio.play();
+                isPlaying = true;
+                playBtn.innerText = "Pauza";
+                if (animationFrameId) cancelAnimationFrame(animationFrameId);
+                drawVisualizerLoop();
+            }
+        });
+
+        recordBtn.addEventListener('click', () => {
+            if (currentMode === 'thumb') tabVis.click();
+
+            if (isRecording) {
+                mediaRecorder.stop();
+                recordBtn.innerText = "Nagraj Wideo";
+                statusEl.style.display = "none";
+                isRecording = false;
+            } else {
+                initAudio();
+                recordedChunks = [];
+
+                const canvasStream = canvas.captureStream(60);
+                const audioStream = dest.stream;
+
+                const combinedStream = new MediaStream([
+                    ...canvasStream.getVideoTracks(),
+                    ...audioStream.getAudioTracks()
+                ]);
+
+                let options = { mimeType: 'video/webm; codecs=vp8,opus', videoBitsPerSecond: 8000000 };
+                if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+                    options = { mimeType: 'video/webm', videoBitsPerSecond: 8000000 };
+                }
+
+                mediaRecorder = new MediaRecorder(combinedStream, options);
+
+                mediaRecorder.ondataavailable = (e) => {
+                    if (e.data.size > 0) recordedChunks.push(e.data);
+                };
+
+                mediaRecorder.onstop = () => {
+                    const blob = new Blob(recordedChunks, { type: 'video/webm' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.style.display = 'none';
+                    a.href = url;
+                    a.download = 'nightcore_short_visualizer_1080p.webm';
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                };
+
+                recordStartTime = performance.now();
+                showIntro = true;
+
+                mediaRecorder.start();
+                audio.play();
+                isPlaying = true;
+                playBtn.innerText = "Pauza";
+
+                if (animationFrameId) cancelAnimationFrame(animationFrameId);
+                drawVisualizerLoop();
+
+                recordBtn.innerText = "Zatrzymaj Nagrywanie";
+                statusEl.style.display = "block";
+                controls.classList.add('controls-hidden');
+                isRecording = true;
+            }
+        });
+
+        function drawVisualizerLoop() {
+            if (!isPlaying && !isRecording) return;
+            animationFrameId = requestAnimationFrame(drawVisualizerLoop);
+
+            const bufferLength = analyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+            analyser.getByteFrequencyData(dataArray);
+
+            let bassSum = 0;
+            for(let i=0; i<4; i++) {
+                bassSum += dataArray[i];
+            }
+            let bassAvg = (bassSum / 4) / 255;
+
+            let targetScale = 1.0 + Math.pow(bassAvg, 3) * 0.045;
+            currentScale += (targetScale - currentScale) * 0.45;
+
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            let introBgAlpha = 0;
+            let textAlpha = 0;
+            let logoAlpha = 0;
+            let logoYOffset = 0;
+
+            if (showIntro && isRecording) {
+                const elapsedTime = (performance.now() - recordStartTime) / 1000;
+
+                if (elapsedTime > 4.5) {
+                    showIntro = false;
+                } else {
+                    const easeOutCubic = x => 1 - Math.pow(1 - x, 3);
+
+                    if (elapsedTime < 0.5) {
+                        const p = elapsedTime / 0.5;
+                        introBgAlpha = easeOutCubic(p) * 0.45;
+                        textAlpha = easeOutCubic(p);
+                        logoAlpha = 0;
+                        logoYOffset = 50;
+                    } else if (elapsedTime < 0.8) {
+                        const p = (elapsedTime - 0.5) / 0.3;
+                        introBgAlpha = 0.45;
+                        textAlpha = 1;
+                        logoAlpha = easeOutCubic(p);
+                        logoYOffset = 50 * (1 - easeOutCubic(p));
+                    } else if (elapsedTime < 3.5) {
+                        introBgAlpha = 0.45;
+                        textAlpha = 1;
+                        logoAlpha = 1;
+                        logoYOffset = 0;
+                    } else {
+                        const p = (elapsedTime - 3.5) / 1.0;
+                        const invP = 1 - easeOutCubic(p);
+                        introBgAlpha = 0.45 * invP;
+                        textAlpha = invP;
+                        logoAlpha = invP;
+                        logoYOffset = 0;
+                    }
+                }
+            }
+
+            const motionTime = performance.now() * 0.001;
+            const driftX = Math.sin(motionTime * 0.2) * 4;
+            const driftY = Math.cos(motionTime * 0.25) * 2;
+
+            ctx.save();
+            ctx.translate(canvas.width / 2, canvas.height / 2);
+            ctx.scale(currentScale, currentScale);
+            ctx.translate(-canvas.width / 2, -canvas.height / 2);
+            ctx.translate(driftX, driftY);
+
+            drawBackground();
+            ctx.restore();
+
+            ctx.filter = 'none';
+
+            const activeBins = 48;
+            const totalBins = activeBins * 4;
+            const barWidth = canvas.width / totalBins;
+
+            let heights = [];
+            for (let i = 0; i < activeBins; i++) {
+                let rawHeight = (dataArray[i * 2] + dataArray[i * 2 + 1]) / 2;
+
+                const normalized = rawHeight / 255.0;
+                let curve = Math.pow(normalized, 1.8);
+
+                let dampener = 1 - (i / activeBins) * 0.7;
+                let h = curve * dampener * canvas.height * 0.45;
+                if (h < 5) h = 5;
+                heights.push(h);
+            }
+
+            let fullHeights = [];
+            for(let i = activeBins - 1; i >= 0; i--) fullHeights.push(heights[i]);
+            for(let i = 0; i < activeBins; i++) fullHeights.push(heights[i]);
+            for(let i = activeBins - 1; i >= 0; i--) fullHeights.push(heights[i]);
+            for(let i = 0; i < activeBins; i++) fullHeights.push(heights[i]);
+
+            ctx.shadowBlur = 25;
+            ctx.shadowColor = accentGlowColor;
+
+            ctx.beginPath();
+            const baseY = canvas.height + 10;
+            ctx.moveTo(0, baseY);
+
+            for (let i = 0; i < totalBins; i++) {
+                let h = fullHeights[i];
+                let y = canvas.height - h;
+                let x = i * barWidth;
+
+                ctx.lineTo(x, y);
+                ctx.lineTo(x + barWidth, y);
+            }
+
+            ctx.lineTo(canvas.width, baseY);
+            ctx.closePath();
+
+            ctx.fillStyle = "rgba(10, 10, 10, 0.95)";
+            ctx.fill();
+
+            ctx.lineWidth = 4;
+            ctx.strokeStyle = accentGlowColor;
+            ctx.stroke();
+
+            ctx.shadowBlur = 0;
+
+            drawText();
+            drawLyrics();
+
+            if (showIntro && isRecording) {
+                ctx.save();
+
+                if (introBgAlpha > 0) {
+                    ctx.fillStyle = `rgba(0, 0, 0, ${introBgAlpha})`;
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                }
+
+                const cols = 2;
+                const rows = 3;
+                const cellW = 180;
+                const cellH = 180;
+                const gapX = 200;
+                const gapY = 160;
+
+                const totalW = (cols * cellW) + ((cols - 1) * gapX);
+                const totalH = (rows * cellH) + ((rows - 1) * gapY);
+
+                const startX = (canvas.width - totalW) / 2;
+                const startY = (canvas.height - totalH) / 2 + logoYOffset + 120;
+
+                if (textAlpha > 0) {
+                    ctx.globalAlpha = textAlpha;
+                    ctx.textAlign = "center";
+                    ctx.fillStyle = "white";
+                    ctx.font = "700 90px 'Oswald', sans-serif";
+                    ctx.shadowColor = accentGlowColor;
+                    ctx.shadowBlur = 30;
+                    ctx.fillText("LISTEN ON", canvas.width / 2, startY - 160);
+                }
+
+                if (logoAlpha > 0) {
+                    ctx.globalAlpha = logoAlpha;
+                    ctx.shadowColor = "rgba(0, 0, 0, 0.5)";
+                    ctx.shadowBlur = 15;
+
+                    logosConfig.forEach((logo, i) => {
+                        if (!logo.rasterized) return;
+
+                        const col = i % cols;
+                        const row = Math.floor(i / cols);
+
+                        const cellCenterX = startX + col * (cellW + gapX) + cellW / 2;
+                        const cellCenterY = startY + row * (cellH + gapY) + cellH / 2;
+
+                        ctx.drawImage(
+                            logo.rasterized,
+                            cellCenterX - logo.finalW / 2,
+                            cellCenterY - logo.finalH / 2 + logo.offsetY,
+                            logo.finalW,
+                            logo.finalH
+                        );
+                    });
+                }
+
+                ctx.restore();
+            }
+        }
+
+        updateTabColors();
+        resizeCanvas();
+    </script>
+</body>
+</html>

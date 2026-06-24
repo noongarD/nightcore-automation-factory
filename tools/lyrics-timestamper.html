@@ -1,0 +1,767 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Nightcore Lyrics Timestamper</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #101114;
+      --panel: #191b20;
+      --panel-2: #202329;
+      --text: #f5f7fb;
+      --muted: #9ca3af;
+      --line: #30343d;
+      --accent: #ff3b7a;
+      --accent-2: #33d6a6;
+      --warn: #f59e0b;
+      --danger: #ef4444;
+      font-family: Inter, Segoe UI, system-ui, -apple-system, sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    button, input, textarea {
+      font: inherit;
+    }
+
+    .app {
+      display: grid;
+      grid-template-columns: minmax(360px, 0.9fr) minmax(460px, 1.1fr);
+      gap: 16px;
+      padding: 18px;
+      min-height: 100vh;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+      min-width: 0;
+    }
+
+    .panel header {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    h1, h2, h3, p {
+      margin: 0;
+    }
+
+    h1 {
+      font-size: 18px;
+      line-height: 1.25;
+    }
+
+    h2 {
+      font-size: 15px;
+      line-height: 1.3;
+    }
+
+    .hint {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .content {
+      padding: 16px;
+    }
+
+    .stack {
+      display: grid;
+      gap: 12px;
+    }
+
+    label {
+      display: grid;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.3;
+    }
+
+    input[type="file"], input[type="number"], textarea {
+      width: 100%;
+      color: var(--text);
+      background: #111318;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 10px;
+      min-width: 0;
+    }
+
+    textarea {
+      resize: vertical;
+      min-height: 340px;
+      line-height: 1.45;
+      white-space: pre-wrap;
+    }
+
+    audio {
+      width: 100%;
+      display: block;
+    }
+
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    button {
+      border: 1px solid var(--line);
+      background: var(--panel-2);
+      color: var(--text);
+      border-radius: 6px;
+      padding: 9px 11px;
+      cursor: pointer;
+      min-height: 38px;
+    }
+
+    button:hover {
+      border-color: #555b68;
+    }
+
+    button.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+      font-weight: 700;
+    }
+
+    button.good {
+      background: #147a61;
+      border-color: #1ba77f;
+      color: #fff;
+    }
+
+    button.danger {
+      background: #47191d;
+      border-color: #7f1d1d;
+      color: #fecaca;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .now {
+      background: #0f141c;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 16px;
+      display: grid;
+      gap: 14px;
+    }
+
+    .time {
+      font-size: 48px;
+      line-height: 1;
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0;
+    }
+
+    .current-line {
+      min-height: 128px;
+      display: grid;
+      align-content: center;
+      text-align: center;
+      border: 1px solid var(--line);
+      background: #12151b;
+      border-radius: 8px;
+      padding: 18px;
+      font-size: clamp(22px, 4vw, 44px);
+      line-height: 1.15;
+      font-weight: 800;
+      text-transform: uppercase;
+      overflow-wrap: anywhere;
+    }
+
+    .nearby {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 10px;
+    }
+
+    .nearby div {
+      background: #14171d;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 10px;
+      min-height: 58px;
+      color: var(--muted);
+      overflow-wrap: anywhere;
+      line-height: 1.35;
+      font-size: 13px;
+    }
+
+    .progress {
+      height: 10px;
+      background: #101217;
+      border-radius: 999px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+    }
+
+    .progress span {
+      display: block;
+      height: 100%;
+      width: 0;
+      background: linear-gradient(90deg, var(--accent), var(--accent-2));
+    }
+
+    .table-wrap {
+      max-height: 55vh;
+      overflow: auto;
+      border-top: 1px solid var(--line);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      table-layout: fixed;
+    }
+
+    th, td {
+      padding: 9px 10px;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+      overflow-wrap: anywhere;
+    }
+
+    th {
+      position: sticky;
+      top: 0;
+      background: #171a20;
+      z-index: 1;
+      text-align: left;
+      color: var(--muted);
+      font-weight: 700;
+    }
+
+    tr.active td {
+      background: rgba(255, 59, 122, 0.12);
+    }
+
+    td.time-cell {
+      width: 92px;
+      color: var(--accent-2);
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+
+    td.actions {
+      width: 140px;
+      white-space: nowrap;
+    }
+
+    td.actions button {
+      min-height: 30px;
+      padding: 5px 7px;
+      margin-right: 4px;
+    }
+
+    .status {
+      min-height: 24px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.4;
+    }
+
+    .status.warn { color: var(--warn); }
+    .status.good { color: var(--accent-2); }
+    .status.bad { color: #fca5a5; }
+
+    kbd {
+      border: 1px solid #4b5563;
+      background: #0b0d11;
+      color: var(--text);
+      border-radius: 4px;
+      padding: 2px 5px;
+      font-size: 12px;
+    }
+
+    @media (max-width: 980px) {
+      .app {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <section class="panel">
+      <header>
+        <div>
+          <h1>Nightcore Lyrics Timestamper</h1>
+          <p class="hint">Audio + tekst z Suno -> recznie nabity timing -> LRC/JSON do renderera.</p>
+        </div>
+      </header>
+      <div class="content stack">
+        <label>
+          Plik audio
+          <input id="audioFile" type="file" accept="audio/*,.wav,.mp3,.flac,.m4a,.aac,.ogg">
+        </label>
+        <audio id="audio" controls preload="metadata"></audio>
+        <div class="grid-2">
+          <label>
+            Opuszczenie startu (sek.)
+            <input id="offset" type="number" min="-30" max="300" step="0.05" value="0">
+          </label>
+          <label>
+            Minimalna dlugosc linii (sek.)
+            <input id="minDuration" type="number" min="0.2" max="10" step="0.05" value="0.75">
+          </label>
+        </div>
+        <label>
+          Tekst piosenki
+          <textarea id="lyricsText" spellcheck="false" placeholder="Wklej tekst z Suno. Puste linie i naglowki typu [Verse] zostana pominiete."></textarea>
+        </label>
+        <div class="controls">
+          <button id="loadLines" class="primary" type="button">Wczytaj linie</button>
+          <button id="pasteClipboard" type="button">Wklej ze schowka</button>
+          <button id="clearAll" class="danger" type="button">Wyczysc timing</button>
+        </div>
+        <p class="hint">
+          Sterowanie: <kbd>Spacja</kbd> nabija czas obecnej linijki, <kbd>Backspace</kbd> cofa,
+          <kbd>A</kbd>/<kbd>D</kbd> poprawia czas o 0.05 s, <kbd>J</kbd>/<kbd>L</kbd> przeskakuje audio.
+        </p>
+      </div>
+    </section>
+
+    <section class="panel">
+      <header>
+        <div>
+          <h2>Timing</h2>
+          <p class="hint" id="counter">0 / 0</p>
+        </div>
+        <div class="controls">
+          <button id="downloadLrc" class="good" type="button">Pobierz .lrc</button>
+          <button id="downloadJson" type="button">Pobierz .json</button>
+        </div>
+      </header>
+      <div class="content stack">
+        <div class="now">
+          <div class="time" id="clock">00:00.00</div>
+          <div class="progress"><span id="bar"></span></div>
+          <div class="current-line" id="currentLine">Wczytaj audio i tekst</div>
+          <div class="nearby">
+            <div><strong>Poprzednia</strong><br><span id="previousLine">-</span></div>
+            <div><strong>Nastepna</strong><br><span id="nextLine">-</span></div>
+          </div>
+        </div>
+        <div class="controls">
+          <button id="playPause" class="primary" type="button">Play / Pause</button>
+          <button id="stamp" class="good" type="button">Nabij linie</button>
+          <button id="undo" type="button">Cofnij</button>
+          <button id="minus" type="button">-0.05 s</button>
+          <button id="plus" type="button">+0.05 s</button>
+        </div>
+        <div class="status" id="status">Gotowe.</div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 64px;">#</th>
+              <th style="width: 108px;">Start</th>
+              <th>Tekst</th>
+              <th style="width: 150px;">Akcje</th>
+            </tr>
+          </thead>
+          <tbody id="linesTable"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const audioFile = document.getElementById("audioFile");
+    const audio = document.getElementById("audio");
+    const lyricsText = document.getElementById("lyricsText");
+    const loadLines = document.getElementById("loadLines");
+    const pasteClipboard = document.getElementById("pasteClipboard");
+    const clearAll = document.getElementById("clearAll");
+    const offset = document.getElementById("offset");
+    const minDuration = document.getElementById("minDuration");
+    const clock = document.getElementById("clock");
+    const bar = document.getElementById("bar");
+    const currentLine = document.getElementById("currentLine");
+    const previousLine = document.getElementById("previousLine");
+    const nextLine = document.getElementById("nextLine");
+    const counter = document.getElementById("counter");
+    const status = document.getElementById("status");
+    const linesTable = document.getElementById("linesTable");
+    const playPause = document.getElementById("playPause");
+    const stampButton = document.getElementById("stamp");
+    const undoButton = document.getElementById("undo");
+    const minusButton = document.getElementById("minus");
+    const plusButton = document.getElementById("plus");
+    const downloadLrc = document.getElementById("downloadLrc");
+    const downloadJson = document.getElementById("downloadJson");
+
+    let lines = [];
+    let currentIndex = 0;
+    let audioName = "lyrics";
+    let rafId = null;
+
+    function setStatus(message, type = "") {
+      status.textContent = message;
+      status.className = `status ${type}`.trim();
+    }
+
+    function cleanLine(line) {
+      return String(line || "")
+        .replace(/<[^>]+>/g, "")
+        .replace(/\{[^}]+\}/g, "")
+        .replace(/\s+/g, " ")
+        .trim();
+    }
+
+    function shouldSkip(line) {
+      return !line || /^\[[^\]]+\]$/.test(line);
+    }
+
+    function parseLyricsText(raw) {
+      return String(raw || "")
+        .split(/\r?\n/g)
+        .map(cleanLine)
+        .filter((line) => !shouldSkip(line))
+        .map((text) => ({ text, start: null }));
+    }
+
+    function secondsNow() {
+      return Math.max(0, audio.currentTime + Number(offset.value || 0));
+    }
+
+    function formatTime(seconds) {
+      const safe = Math.max(0, Number(seconds) || 0);
+      const minutes = Math.floor(safe / 60);
+      const secs = Math.floor(safe % 60);
+      const centis = Math.floor((safe - Math.floor(safe)) * 100);
+      return `${String(minutes).padStart(2, "0")}:${String(secs).padStart(2, "0")}.${String(centis).padStart(2, "0")}`;
+    }
+
+    function formatSrtTime(seconds) {
+      const safe = Math.max(0, Number(seconds) || 0);
+      const hours = Math.floor(safe / 3600);
+      const minutes = Math.floor((safe % 3600) / 60);
+      const secs = Math.floor(safe % 60);
+      const millis = Math.floor((safe - Math.floor(safe)) * 1000);
+      return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(secs).padStart(2, "0")},${String(millis).padStart(3, "0")}`;
+    }
+
+    function nextUnstampedIndex() {
+      const found = lines.findIndex((line) => line.start === null);
+      return found === -1 ? Math.max(0, lines.length - 1) : found;
+    }
+
+    function updateCurrentIndex() {
+      if (lines.length === 0) {
+        currentIndex = 0;
+        return;
+      }
+      currentIndex = Math.min(Math.max(currentIndex, 0), lines.length - 1);
+    }
+
+    function getStampedCount() {
+      return lines.filter((line) => line.start !== null).length;
+    }
+
+    function buildTimedLines() {
+      const stamped = lines
+        .map((line, index) => ({ ...line, index }))
+        .filter((line) => line.start !== null)
+        .sort((a, b) => a.index - b.index);
+
+      const minLineDuration = Math.max(0.2, Number(minDuration.value || 0.75));
+      const duration = Number.isFinite(audio.duration) ? audio.duration + Number(offset.value || 0) : null;
+
+      return stamped.map((line, stampedIndex) => {
+        const next = stamped[stampedIndex + 1];
+        const fallbackEnd = duration || line.start + 3.2;
+        const end = next
+          ? Math.max(line.start + minLineDuration, next.start - 0.08)
+          : Math.max(line.start + minLineDuration, fallbackEnd);
+        return {
+          start: Number(line.start.toFixed(3)),
+          end: Number(end.toFixed(3)),
+          text: line.text,
+        };
+      });
+    }
+
+    function renderTable() {
+      linesTable.innerHTML = "";
+      const fragment = document.createDocumentFragment();
+
+      lines.forEach((line, index) => {
+        const tr = document.createElement("tr");
+        if (index === currentIndex) tr.className = "active";
+
+        const number = document.createElement("td");
+        number.textContent = String(index + 1);
+
+        const time = document.createElement("td");
+        time.className = "time-cell";
+        time.textContent = line.start === null ? "-" : formatTime(line.start);
+
+        const text = document.createElement("td");
+        text.textContent = line.text;
+
+        const actions = document.createElement("td");
+        actions.className = "actions";
+
+        const jump = document.createElement("button");
+        jump.type = "button";
+        jump.textContent = "Idz";
+        jump.addEventListener("click", () => {
+          currentIndex = index;
+          if (line.start !== null) audio.currentTime = Math.max(0, line.start - Number(offset.value || 0));
+          updateUi();
+        });
+
+        const set = document.createElement("button");
+        set.type = "button";
+        set.textContent = "Ustaw";
+        set.addEventListener("click", () => {
+          currentIndex = index;
+          stampCurrent();
+        });
+
+        const clear = document.createElement("button");
+        clear.type = "button";
+        clear.textContent = "X";
+        clear.addEventListener("click", () => {
+          line.start = null;
+          currentIndex = index;
+          updateUi();
+        });
+
+        actions.append(jump, set, clear);
+        tr.append(number, time, text, actions);
+        fragment.appendChild(tr);
+      });
+
+      linesTable.appendChild(fragment);
+    }
+
+    function updateUi() {
+      updateCurrentIndex();
+      const stamped = getStampedCount();
+      counter.textContent = `${stamped} / ${lines.length}`;
+      clock.textContent = formatTime(secondsNow());
+      bar.style.width = Number.isFinite(audio.duration) && audio.duration > 0
+        ? `${Math.min(100, Math.max(0, (audio.currentTime / audio.duration) * 100))}%`
+        : "0%";
+
+      if (lines.length === 0) {
+        currentLine.textContent = "Wczytaj audio i tekst";
+        previousLine.textContent = "-";
+        nextLine.textContent = "-";
+      } else {
+        currentLine.textContent = lines[currentIndex].text;
+        previousLine.textContent = currentIndex > 0 ? lines[currentIndex - 1].text : "-";
+        nextLine.textContent = currentIndex < lines.length - 1 ? lines[currentIndex + 1].text : "-";
+      }
+
+      renderTable();
+    }
+
+    function tick() {
+      clock.textContent = formatTime(secondsNow());
+      bar.style.width = Number.isFinite(audio.duration) && audio.duration > 0
+        ? `${Math.min(100, Math.max(0, (audio.currentTime / audio.duration) * 100))}%`
+        : "0%";
+      rafId = requestAnimationFrame(tick);
+    }
+
+    function stampCurrent() {
+      if (lines.length === 0) {
+        setStatus("Najpierw wczytaj tekst.", "warn");
+        return;
+      }
+      if (!audio.src) {
+        setStatus("Najpierw wybierz audio.", "warn");
+        return;
+      }
+
+      lines[currentIndex].start = Number(secondsNow().toFixed(3));
+      if (currentIndex < lines.length - 1) currentIndex += 1;
+      else currentIndex = nextUnstampedIndex();
+
+      const stamped = getStampedCount();
+      setStatus(stamped === lines.length ? "Wszystkie linie maja timing. Mozesz pobrac LRC." : "Timing zapisany.", "good");
+      updateUi();
+    }
+
+    function undoStamp() {
+      if (lines.length === 0) return;
+      const stampedIndexes = lines
+        .map((line, index) => line.start !== null ? index : -1)
+        .filter((index) => index !== -1);
+      if (stampedIndexes.length === 0) return;
+
+      const index = stampedIndexes[stampedIndexes.length - 1];
+      lines[index].start = null;
+      currentIndex = index;
+      setStatus("Cofnieto ostatni timing.", "warn");
+      updateUi();
+    }
+
+    function adjustCurrent(delta) {
+      if (lines.length === 0) return;
+      const line = lines[currentIndex];
+      if (line.start === null) {
+        setStatus("Ta linia nie ma jeszcze czasu.", "warn");
+        return;
+      }
+      line.start = Math.max(0, Number((line.start + delta).toFixed(3)));
+      audio.currentTime = Math.max(0, line.start - Number(offset.value || 0));
+      updateUi();
+    }
+
+    function download(name, content, type) {
+      const blob = new Blob([content], { type });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = name;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
+    function baseName() {
+      return audioName.replace(/\.[^.]+$/, "") || "lyrics";
+    }
+
+    function exportLrc() {
+      const timed = buildTimedLines();
+      if (timed.length === 0) {
+        setStatus("Nie ma jeszcze zadnego timingu do eksportu.", "warn");
+        return;
+      }
+      const content = timed.map((line) => `[${formatTime(line.start)}]${line.text}`).join("\n") + "\n";
+      download(`${baseName()}.lrc`, content, "text/plain;charset=utf-8");
+      setStatus("Pobrano LRC. Nazwij go tak samo jak audio albo jako lyrics.lrc.", "good");
+    }
+
+    function exportJson() {
+      const timed = buildTimedLines();
+      if (timed.length === 0) {
+        setStatus("Nie ma jeszcze zadnego timingu do eksportu.", "warn");
+        return;
+      }
+      const payload = {
+        version: 1,
+        timingMode: "manual",
+        generatedAt: new Date().toISOString(),
+        sourceAudio: audioName,
+        lines: timed,
+      };
+      download(`${baseName()}-lyrics.json`, JSON.stringify(payload, null, 2), "application/json;charset=utf-8");
+      setStatus("Pobrano JSON.", "good");
+    }
+
+    audioFile.addEventListener("change", () => {
+      const file = audioFile.files && audioFile.files[0];
+      if (!file) return;
+      audioName = file.name;
+      audio.src = URL.createObjectURL(file);
+      setStatus(`Wczytano audio: ${file.name}`, "good");
+    });
+
+    loadLines.addEventListener("click", () => {
+      lines = parseLyricsText(lyricsText.value);
+      currentIndex = nextUnstampedIndex();
+      setStatus(lines.length ? `Wczytano ${lines.length} linijek.` : "Nie znaleziono linijek tekstu.", lines.length ? "good" : "warn");
+      updateUi();
+    });
+
+    pasteClipboard.addEventListener("click", async () => {
+      try {
+        lyricsText.value = await navigator.clipboard.readText();
+        setStatus("Wklejono tekst ze schowka.", "good");
+      } catch {
+        setStatus("Przegladarka nie pozwolila odczytac schowka. Wklej tekst recznie.", "warn");
+      }
+    });
+
+    clearAll.addEventListener("click", () => {
+      lines.forEach((line) => { line.start = null; });
+      currentIndex = 0;
+      setStatus("Wyczyszczono timing.", "warn");
+      updateUi();
+    });
+
+    playPause.addEventListener("click", () => {
+      if (!audio.src) return;
+      if (audio.paused) audio.play();
+      else audio.pause();
+    });
+
+    stampButton.addEventListener("click", stampCurrent);
+    undoButton.addEventListener("click", undoStamp);
+    minusButton.addEventListener("click", () => adjustCurrent(-0.05));
+    plusButton.addEventListener("click", () => adjustCurrent(0.05));
+    downloadLrc.addEventListener("click", exportLrc);
+    downloadJson.addEventListener("click", exportJson);
+
+    document.addEventListener("keydown", (event) => {
+      const target = event.target;
+      const typing = target && ["TEXTAREA", "INPUT"].includes(target.tagName);
+      if (typing) return;
+
+      if (event.code === "Space" || event.code === "Enter") {
+        event.preventDefault();
+        stampCurrent();
+      } else if (event.code === "Backspace") {
+        event.preventDefault();
+        undoStamp();
+      } else if (event.key.toLowerCase() === "a") {
+        adjustCurrent(-0.05);
+      } else if (event.key.toLowerCase() === "d") {
+        adjustCurrent(0.05);
+      } else if (event.key.toLowerCase() === "j") {
+        audio.currentTime = Math.max(0, audio.currentTime - 2);
+      } else if (event.key.toLowerCase() === "l") {
+        audio.currentTime = Math.min(audio.duration || audio.currentTime + 2, audio.currentTime + 2);
+      }
+    });
+
+    audio.addEventListener("loadedmetadata", updateUi);
+    audio.addEventListener("play", () => {
+      cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(tick);
+    });
+    audio.addEventListener("pause", () => cancelAnimationFrame(rafId));
+    audio.addEventListener("ended", () => cancelAnimationFrame(rafId));
+    audio.addEventListener("timeupdate", () => {
+      if (audio.paused) updateUi();
+    });
+
+    updateUi();
+  </script>
+</body>
+</html>
