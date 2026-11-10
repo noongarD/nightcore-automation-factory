@@ -164,13 +164,15 @@ Each queued project receives a copy of `metadata.template.json`. Useful options 
 }
 ```
 
-`accentColor: "auto"` samples the visible artwork for each crop. The palette colors the
+`accentColor: "auto"` samples the illustration so the landscape and portrait versions
+of a wide source share its palette. The palette colors the
 spectrum, title outline, caption band, and intro accents. The bundled fonts include their
 SIL Open Font Licenses in `templates/fonts/classic/`.
 
 Both renders use `templates/song-visualizer.html`. Open the file with `?variant=short`
-to preview the 9:16 layout. The portrait version raises the title above the lower controls
-and opens directly on the selected audio excerpt.
+to preview the 9:16 layout. The portrait version keeps more of wide artwork in frame.
+Lyrics sit over a soft gradient. The shallower spectrum fades back into the image
+below the title, which sits above the lower player controls.
 
 ## n8n
 
