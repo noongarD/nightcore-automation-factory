@@ -3,7 +3,7 @@
 A local-first media automation pipeline that turns an audio file and artwork into:
 
 - a 1080p60 YouTube visualizer,
-- a vertical short-form teaser,
+- a native 1080 × 1920, 60 fps teaser for Shorts and TikTok,
 - a generated thumbnail,
 - timed lyric overlays,
 - an optional one-hour music mix,
@@ -38,7 +38,7 @@ flowchart LR
 ## Highlights
 
 - **Folder-based job queue** with stable-file checks and automatic audio/artwork pairing.
-- **Dynamic visual theme** derived from the supplied background image.
+- **Shared song visualizer** with a stepped spectrum, a palette sampled from the visible artwork, and Plus Jakarta Sans titles in both formats.
 - **GPU-first encoding** through NVIDIA NVENC with a `libx264` fallback.
 - **60 FPS output** for both landscape and vertical formats.
 - **Automated lyric transcription** and word-timestamp alignment using Whisper.
@@ -69,7 +69,7 @@ flowchart LR
 |-- n8n/                     Sanitized importable workflow
 |-- examples/                Example mix configuration
 |-- scripts/                 Render, queue, recovery and transcription tools
-|-- templates/               Landscape, vertical and mix visualizers
+|-- templates/               Shared song visualizer, bundled fonts and separate mix template
 |-- tools/                   Browser-based manual lyric timestamper
 |-- metadata.template.json   Per-track defaults
 |-- requirements-lyrics.txt  Optional Whisper dependency
@@ -158,15 +158,24 @@ Each queued project receives a copy of `metadata.template.json`. Useful options 
   "lyricsAutoTranscribe": true,
   "lyricsWhisperModel": "base",
   "shortsEnabled": true,
+  "shortLyricsEnabled": true,
   "shortStartSeconds": 45,
   "shortDurationSeconds": 30
 }
 ```
 
-`accentColor: "auto"` samples the artwork and applies a matching color to the visualizer,
-thumbnail and text.
+`accentColor: "auto"` samples the visible artwork for each crop. The palette colors the
+spectrum, title outline, caption band, and intro accents. The bundled fonts include their
+SIL Open Font Licenses in `templates/fonts/classic/`.
+
+Both renders use `templates/song-visualizer.html`. Open the file with `?variant=short`
+to preview the 9:16 layout. The portrait version raises the title above the lower controls
+and opens directly on the selected audio excerpt.
 
 ## n8n
+
+The example runs on self-hosted n8n on the Windows render host and needs the
+[Execute Command node](https://docs.n8n.io/integrations/builtin/core-nodes/n8n-nodes-base.executecommand/).
 
 1. Install n8n locally.
 2. Start it through `scripts/start-n8n.ps1` so the workflow can access generated files.
@@ -176,7 +185,8 @@ thumbnail and text.
 6. Keep uploads private while testing.
 
 The workflow processes every rendered item returned by the inbox script, so multiple
-audio/artwork pairs can be queued and handled in one execution.
+audio/artwork pairs can be queued and handled in one execution. The Short branch only
+receives items that have a vertical MP4.
 
 ## Build a long-form mix
 

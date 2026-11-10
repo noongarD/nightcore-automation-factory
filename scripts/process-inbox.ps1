@@ -229,7 +229,7 @@ foreach ($audio in $audioFiles) {
             description = "AI-generated nightcore visualizer."
             tags = @("nightcore", "suno ai", "ai music")
             privacy = "private"
-            accentColor = "#ff3300"
+            accentColor = "auto"
         } | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $metadataTarget -Encoding utf8
     }
 

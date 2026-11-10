@@ -1,4 +1,5 @@
 {
+  "id": "NkSongFormatsEx1",
   "name": "Nightcore Automation Factory",
   "nodes": [
     {
@@ -23,7 +24,9 @@
         0
       ],
       "id": "3bc4dcc5-0e9c-48fd-8234-c982f723ff61",
-      "name": "Render videos"
+      "name": "Render videos",
+      "notesInFlow": true,
+      "notes": "Runs the shared song visualizer for 1080p60 landscape and, when enabled, 1080 × 1920 at 60 fps."
     },
     {
       "parameters": {
@@ -156,13 +159,26 @@
     },
     {
       "parameters": {
+        "jsCode": "return $input.all().flatMap(({ json }, index) => {\n  if (typeof json.shortMp4Path !== 'string' || !json.shortMp4Path.trim()) return [];\n  return [{ json, pairedItem: { item: index } }];\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -210,
+        -120
+      ],
+      "id": "cfe6eb91-af4f-4966-afb6-53f88eb1ebc8",
+      "name": "Keep rendered Shorts"
+    },
+    {
+      "parameters": {
         "fileSelector": "={{$json.shortMp4Path}}",
         "options": {}
       },
       "type": "n8n-nodes-base.readWriteFile",
       "typeVersion": 1.1,
       "position": [
-        -210,
+        20,
         -120
       ],
       "id": "edbd1c2f-d8fc-4140-8225-8189006d9702",
@@ -184,7 +200,7 @@
       "type": "n8n-nodes-base.youTube",
       "typeVersion": 1,
       "position": [
-        20,
+        240,
         -120
       ],
       "id": "9cfbc8b2-da5d-4e4c-85fa-381cd762c2c7",
@@ -223,7 +239,7 @@
             "index": 0
           },
           {
-            "node": "Read short video",
+            "node": "Keep rendered Shorts",
             "type": "main",
             "index": 0
           }
@@ -279,6 +295,17 @@
         [
           {
             "node": "Set thumbnail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Keep rendered Shorts": {
+      "main": [
+        [
+          {
+            "node": "Read short video",
             "type": "main",
             "index": 0
           }

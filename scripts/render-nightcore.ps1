@@ -7,8 +7,7 @@ $ErrorActionPreference = "Stop"
 
 $factoryRoot = if ($env:NIGHTCORE_FACTORY_ROOT) { $env:NIGHTCORE_FACTORY_ROOT } else { "C:\NightcoreFactory" }
 $scriptDir = Join-Path $factoryRoot "scripts"
-$templatePath = Join-Path $factoryRoot "templates\VISUALIZER ZWYKLY.html"
-$shortTemplatePath = Join-Path $factoryRoot "templates\VISUALIZER TIKTOK.html"
+$templatePath = Join-Path $factoryRoot "templates\song-visualizer.html"
 $outputRoot = Join-Path $factoryRoot "outputs"
 $workRoot = Join-Path $factoryRoot "work"
 $rendererScript = Join-Path $scriptDir "render-nightcore.cjs"
@@ -181,7 +180,7 @@ if ($LASTEXITCODE -ne 0) {
 
 $shortsEnabled = Get-MetadataBool -Metadata $metadata -Name "shortsEnabled" -Default $true
 
-if ($shortsEnabled -and (Test-Path -LiteralPath $shortTemplatePath)) {
+if ($shortsEnabled) {
     if (-not (Test-Path -LiteralPath $mergeScript)) {
         throw "Short summary merger is missing: $mergeScript"
     }
@@ -221,7 +220,7 @@ if ($shortsEnabled -and (Test-Path -LiteralPath $shortTemplatePath)) {
 
     node $rendererScript `
         --project $ProjectPath `
-        --template $shortTemplatePath `
+        --template $templatePath `
         --outputRoot $outputRoot `
         --ffmpeg $ffmpegPath `
         --ffprobe $ffprobePath `

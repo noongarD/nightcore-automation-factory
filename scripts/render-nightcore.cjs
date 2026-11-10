@@ -318,7 +318,8 @@ async function main() {
     visualArtist,
     outroTimestamp: formatTimestamp(duration),
   });
-  const lyricsEnabled = metadata.lyricsEnabled !== false && metadata.lyrics !== false;
+  const lyricsEnabled = metadata.lyricsEnabled !== false && metadata.lyrics !== false
+    && (variant !== "short" || metadata.shortLyricsEnabled !== false);
   const lyricsPath = args.lyricsPath
     ? path.resolve(args.lyricsPath)
     : path.join(projectPath, "lyrics.json");
@@ -346,13 +347,16 @@ async function main() {
   }
 
   const headless = metadata.headless === true;
+  const viewport = variant === "short" ? { width: 1080, height: 1920 } : { width: 1920, height: 1080 };
+  const templateUrl = pathToFileURL(templatePath);
+  if (variant === "short") templateUrl.searchParams.set("variant", "short");
   const browser = await chromium.launch({
     headless,
     args: [
       "--autoplay-policy=no-user-gesture-required",
       "--disable-background-timer-throttling",
       "--disable-renderer-backgrounding",
-      "--window-size=1920,1080",
+      `--window-size=${viewport.width},${viewport.height}`,
       "--use-angle=d3d11",
       "--enable-gpu-rasterization",
     ],
@@ -361,17 +365,21 @@ async function main() {
   try {
     const context = await browser.newContext({
       acceptDownloads: true,
-      viewport: { width: 1920, height: 1080 },
+      viewport,
       deviceScaleFactor: 1,
     });
     context.setDefaultTimeout(timeoutMs);
 
     const page = await context.newPage();
     await page.bringToFront();
-    await page.goto(pathToFileURL(templatePath).href, { waitUntil: "domcontentloaded" });
+    await page.goto(templateUrl.href, { waitUntil: "domcontentloaded" });
     await page.waitForSelector("#image-upload");
+    const fontsReady = await page.evaluate(() => window.__nightcoreFontsReady ?? true);
+    if (!fontsReady) throw new Error("The visualizer's bundled fonts could not be loaded.");
 
     await page.setInputFiles("#image-upload", backgroundPath);
+    const artworkReady = await page.evaluate(() => window.__nightcoreArtworkReady ?? true);
+    if (!artworkReady) throw new Error("The visualizer could not read the background artwork.");
     await page.setInputFiles("#audio-upload", audioPath);
     await page.fill("#artist-input", visualArtist);
     await page.fill("#title-input", songTitle);

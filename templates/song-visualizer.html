@@ -3,9 +3,27 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Nightcore Pulsing Visualizer 16:9 (Full HD)</title>
+    <title>Nightcore Song Visualizer (Full HD)</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;700&display=swap');
+        @font-face {
+            font-family: "Barlow Semi Condensed";
+            src: url("fonts/classic/BarlowSemiCondensed-Medium.ttf") format("truetype");
+            font-weight: 500;
+            font-style: normal;
+        }
+        @font-face {
+            font-family: "Quicksand";
+            src: url("fonts/classic/Quicksand-Variable.ttf") format("truetype");
+            font-weight: 300 700;
+            font-style: normal;
+        }
+        @font-face {
+            font-family: "Plus Jakarta Sans";
+            src: url("fonts/classic/PlusJakartaSans-Variable.ttf") format("truetype");
+            font-weight: 200 800;
+            font-style: normal;
+        }
 
         body, html {
             margin: 0;
@@ -181,10 +199,10 @@
         <canvas id="canvas"></canvas>
     </div>
 
-    <div id="status">🔴 NAGRYWANIE FULL HD (16:9)...</div>
+    <div id="status">🔴 NAGRYWANIE FULL HD...</div>
 
     <div id="controls">
-        <h3 style="margin-top: 0; color: #ff3300; font-size: 1.1rem; transition: color 0.5s;" id="menu-title">Ustawienia Visualizer</h3>
+        <h3 style="margin-top: 0; color: #9e9e9e; font-size: 1.1rem; transition: color 0.5s;" id="menu-title">Ustawienia Visualizer</h3>
 
         <div class="tabs">
             <button id="tab-vis" class="tab-btn active">Wizualizer</button>
@@ -193,7 +211,7 @@
 
         <div class="input-group">
             <label>Kolor Akcentu (Auto / Ręczny)</label>
-            <input type="color" id="accent-color-picker" value="#ff3300">
+            <input type="color" id="accent-color-picker" value="#9e9e9e">
         </div>
 
         <div id="content-vis" class="tab-content active">
@@ -208,7 +226,7 @@
             </div>
 
             <div class="input-group">
-                <label>Artysta</label>
+                <label for="artist-input">Artysta (miniatura)</label>
                 <input type="text" id="artist-input" value="ADITYA SHARMA">
             </div>
 
@@ -247,6 +265,9 @@
     </div>
 
     <script>
+        const portrait = new URLSearchParams(location.search).get('variant') === 'short';
+        const frameWidth = portrait ? 1080 : 1920;
+        const frameHeight = portrait ? 1920 : 1080;
         const audioUpload = document.getElementById('audio-upload');
         const imageUpload = document.getElementById('image-upload');
         const artistInput = document.getElementById('artist-input');
@@ -280,6 +301,42 @@
 
         let bgImgObj = new Image();
         let thumbSpecificImgObj = new Image();
+        let blurredArtwork = null;
+        let lyricsInput, lyricCues = [];
+        const lyricBandHeight = portrait ? 234 : 94;
+        const lyricCenter = portrait ? 176 : 47;
+        let frequencyData;
+        const spectrumColumns = portrait ? 80 : 128;
+        const spectrumLevels = new Float32Array(spectrumColumns);
+        const spectrumBed = new Float32Array(spectrumColumns);
+        let bassBed = 0, titlePulse = 0;
+        let visualizerPaintCache;
+        let filmTitleLayout;
+        // Different frequency ranges give each cluster its own motion.
+        const spectrumGroups = [
+            {end: 0.31, pivot: 0.145, low: 48, high: 4100, gain: 0.218},
+            {end: 0.50, pivot: 0.405, low: 111, high: 8200, gain: 0.102},
+            {end: 0.69, pivot: 0.595, low: 154, high: 7600, gain: 0.112},
+            {end: 1.00, pivot: 0.857, low: 66, high: 4600, gain: 0.205},
+        ];
+        const spectrumLanes = Array.from({length:spectrumColumns}, (_, i) => {
+            const u = (i + 0.5) / spectrumColumns;
+            const group = spectrumGroups.findIndex(({end}) => u < end);
+            const start = group === 0 ? 0 : spectrumGroups[group-1].end;
+            const {end, pivot, low, high, gain} = spectrumGroups[group];
+            const extent = u < pivot ? pivot - start : end - pivot;
+            const distance = Math.abs(u - pivot) / extent;
+            const edgeTaper = Math.min(1, 0.38 + Math.min(u, 1-u) / 0.12);
+            return {
+                hz: low * (high / low) ** (distance ** 1.22),
+                gain: gain * (1 - 0.70 * distance) * edgeTaper,
+            };
+        });
+        window.__nightcoreFontsReady = Promise.all([
+            document.fonts.load('500 57px "Barlow Semi Condensed"'),
+            document.fonts.load('600 55px "Quicksand"'),
+            document.fonts.load('650 64px "Plus Jakarta Sans"'),
+        ]).then(fonts => fonts.every(faces => faces.length > 0), () => false);
 
         // --- BAZA LOGOTYPÓW DO INTRA ---
         const spotifyImg = new Image();
@@ -335,8 +392,12 @@
             });
         });
 
-        let accentGlowColor = "#ff3300";
+        const artworkOverscan = 1.1;
+        const neutralTone = describeRgb(158, 158, 158);
+        let artworkPalette = {accent: neutralTone, support: neutralTone};
+        let accentGlowColor = "#9e9e9e";
         let thumbAccentColor = accentGlowColor;
+        window.__nightcoreArtworkReady = Promise.resolve(false);
 
         let currentScale = 1.0;
         let currentMode = 'vis';
@@ -345,18 +406,9 @@
         let showIntro = false;
 
         accentColorPicker.addEventListener('input', (e) => {
-            const hexColor = e.target.value;
-            accentGlowColor = hexColor;
-            thumbAccentColor = hexColor;
-
-            menuTitle.style.color = accentGlowColor;
-            playBtn.style.background = accentGlowColor;
-            recordBtn.style.background = accentGlowColor;
-            downloadThumbBtn.style.background = accentGlowColor;
-            statusEl.style.color = accentGlowColor;
-
-            updateTabColors();
-            if (!isPlaying && !isRecording) drawStaticFrame();
+            const channels = e.target.value.slice(1).match(/../g).map(channel => parseInt(channel, 16));
+            const color = describeRgb(...channels);
+            applyArtworkPalette({accent: color, support: color});
         });
 
         function updateTabColors() {
@@ -400,11 +452,11 @@
         });
 
         function resizeCanvas() {
-            canvas.width = 1920;
-            canvas.height = 1080;
+            canvas.width = frameWidth;
+            canvas.height = frameHeight;
 
             const windowRatio = window.innerWidth / window.innerHeight;
-            const targetRatio = 16 / 9;
+            const targetRatio = frameWidth / frameHeight;
 
             if (windowRatio < targetRatio) {
                 canvas.style.width = window.innerWidth + 'px';
@@ -418,82 +470,104 @@
         }
         window.addEventListener('resize', resizeCanvas);
 
-        function extractColorsFromImage(imgObj, callback) {
-            const sampleCanvas = document.createElement('canvas');
-            const sCtx = sampleCanvas.getContext('2d');
-            sampleCanvas.width = 64;
-            sampleCanvas.height = 64;
-            sCtx.drawImage(imgObj, 0, 0, 64, 64);
-            const p = sCtx.getImageData(0, 0, 64, 64).data;
+        function describeRgb(r, g, b) {
+            const max = Math.max(r, g, b), min = Math.min(r, g, b), range = max - min;
+            const light = (max + min) / 510, chroma = range / 255;
+            const sector = !range ? 0 : max === r ? (g-b)/range : max === g ? 2+(b-r)/range : 4+(r-g)/range;
+            return {
+                hue: (sector * 60 + 360) % 360,
+                saturation: range ? chroma / (1 - Math.abs(2 * light - 1)) : 0,
+                light, chroma, rgb: [r, g, b],
+            };
+        }
 
-            let colorBins = {};
-            let maxBinCount = 0;
-            let dominantColor = [255, 50, 50];
+        function artworkRect(image, w, h, overscan) {
+            const scale = overscan * Math.max(w / image.naturalWidth, h / image.naturalHeight);
+            const iw = image.naturalWidth * scale, ih = image.naturalHeight * scale;
+            return [(w - iw) / 2, (h - ih) / 2, iw, ih];
+        }
 
-            for (let i = 0; i < p.length; i += 4) {
-                let r = p[i], g = p[i+1], b = p[i+2];
-                let max = Math.max(r, g, b), min = Math.min(r, g, b);
-                let l = (max + min) / 2;
-                let s = (max === min) ? 0 : (l > 127 ? (max - min) / (510 - max - min) : (max - min) / (max + min));
-
-                if (s < 0.2 || l < 30 || l > 225) continue;
-
-                let rQ = Math.round(r / 32) * 32;
-                let gQ = Math.round(g / 32) * 32;
-                let bQ = Math.round(b / 32) * 32;
-                let bin = `${rQ},${gQ},${bQ}`;
-
-                if (!colorBins[bin]) colorBins[bin] = { count: 0, r: 0, g: 0, b: 0 };
-                colorBins[bin].count++;
-                colorBins[bin].r += r;
-                colorBins[bin].g += g;
-                colorBins[bin].b += b;
-
-                if (colorBins[bin].count > maxBinCount) {
-                    maxBinCount = colorBins[bin].count;
-                    dominantColor = [
-                        Math.round(colorBins[bin].r / colorBins[bin].count),
-                        Math.round(colorBins[bin].g / colorBins[bin].count),
-                        Math.round(colorBins[bin].b / colorBins[bin].count)
-                    ];
+        function extractArtworkPalette(image, overscan = artworkOverscan) {
+            const sample = document.createElement('canvas');
+            sample.width = portrait ? 54 : 96;
+            sample.height = portrait ? 96 : 54;
+            const {width: w, height: h} = sample;
+            const sampleCtx = sample.getContext('2d');
+            sampleCtx.drawImage(image, ...artworkRect(image, w, h, overscan));
+            const pixels = sampleCtx.getImageData(0, 0, w, h).data;
+            const bins = Array.from({length: 24}, () => ({weight: 0, r: 0, g: 0, b: 0}));
+            const wrap = i => (i + bins.length) % bins.length;
+            let area = 0;
+            for (let y = 0; y < h; y++) {
+                const verticalEdge = Math.abs((y + 0.5) * 2 / h - 1) ** 1.8 * 0.52;
+                for (let x = 0; x < w; x++) {
+                    const i = (y * w + x) * 4;
+                    if (pixels[i+3] < 192) continue;
+                    // Favor the environment around the subject, which sits behind the graphics.
+                    const horizontalEdge = Math.abs((x + 0.5) * 2 / w - 1) ** 1.45;
+                    const position = 0.19 + 0.81 * Math.max(horizontalEdge, verticalEdge);
+                    area += position;
+                    const r = pixels[i], g = pixels[i+1], b = pixels[i+2];
+                    const color = describeRgb(r, g, b);
+                    if (color.chroma < 0.045 || color.light < 0.055 || color.light > 0.95) continue;
+                    const weight = position * color.chroma ** 1.65 * (0.45 + 0.55 * color.saturation);
+                    const bin = bins[wrap(Math.round(color.hue / 15))];
+                    bin.weight += weight;
+                    bin.r += r * weight;
+                    bin.g += g * weight;
+                    bin.b += b * weight;
                 }
             }
-
-            if (maxBinCount === 0) dominantColor = [255, 255, 255];
-            callback(dominantColor);
+            const blended = bins.map((center, i) => {
+                const left = bins[wrap(i-1)], right = bins[wrap(i+1)];
+                return Object.fromEntries(['weight', 'r', 'g', 'b'].map(k => [k, center[k] + (left[k] + right[k]) * 0.5]));
+            });
+            const order = blended.map((bin, i) => i).sort((a, b) => blended[b].weight - blended[a].weight);
+            const primary = order[0], strength = blended[primary].weight;
+            if (!strength || strength < area * 0.0018) return {accent: neutralTone, support: neutralTone};
+            const secondary = order.find(i => {
+                const distance = Math.abs(i - primary);
+                return Math.min(distance, bins.length - distance) >= 3 && blended[i].weight >= strength * 0.24;
+            }) ?? primary;
+            const representative = ({weight, r, g, b}) => describeRgb(r/weight, g/weight, b/weight);
+            return {accent: representative(blended[primary]), support: representative(blended[secondary])};
         }
 
-        function rgbToHex(r, g, b) {
-            return "#" + (1 << 24 | r << 16 | g << 8 | b).toString(16).slice(1);
+        function toneHex({rgb}) {
+            return '#' + rgb.map(channel => Math.round(channel).toString(16).padStart(2, '0')).join('');
         }
 
-        function applyNewColor(hexColor, isThumbSpecific = false) {
-            if (isThumbSpecific) {
-                thumbAccentColor = hexColor;
-            } else {
-                accentGlowColor = hexColor;
-                thumbAccentColor = hexColor;
-                accentColorPicker.value = hexColor;
-
-                menuTitle.style.color = accentGlowColor;
-                playBtn.style.background = accentGlowColor;
-                recordBtn.style.background = accentGlowColor;
-                downloadThumbBtn.style.background = accentGlowColor;
-                statusEl.style.color = accentGlowColor;
-                updateTabColors();
-            }
+        function applyArtworkPalette(palette) {
+            artworkPalette = palette;
+            visualizerPaintCache = null;
+            accentGlowColor = toneHex(palette.accent);
+            accentColorPicker.value = accentGlowColor;
+            menuTitle.style.color = accentGlowColor;
+            playBtn.style.background = accentGlowColor;
+            recordBtn.style.background = accentGlowColor;
+            downloadThumbBtn.style.background = accentGlowColor;
+            statusEl.style.color = accentGlowColor;
+            updateTabColors();
             if (!isPlaying && !isRecording) drawStaticFrame();
         }
 
         imageUpload.addEventListener('change', function() {
             if (this.files[0]) {
                 const url = URL.createObjectURL(this.files[0]);
-                bgImgObj.onload = function() {
-                    extractColorsFromImage(bgImgObj, (vibrantPixel) => {
-                        applyNewColor(rgbToHex(vibrantPixel[0], vibrantPixel[1], vibrantPixel[2]), false);
-                    });
-                };
-                bgImgObj.src = url;
+                const image = new Image();
+                image.src = url;
+                const ready = image.decode().then(() => {
+                    if (window.__nightcoreArtworkReady !== ready) return false;
+                    const palette = extractArtworkPalette(image);
+                    bgImgObj = image;
+                    blurredArtwork = null;
+                    applyArtworkPalette(palette);
+                    return true;
+                }).catch(error => {
+                    console.error('Could not read the background artwork:', error);
+                    return false;
+                }).finally(() => URL.revokeObjectURL(url));
+                window.__nightcoreArtworkReady = ready;
             }
         });
 
@@ -501,9 +575,8 @@
             if (this.files[0]) {
                 const url = URL.createObjectURL(this.files[0]);
                 thumbSpecificImgObj.onload = function() {
-                    extractColorsFromImage(thumbSpecificImgObj, (vibrantPixel) => {
-                        applyNewColor(rgbToHex(vibrantPixel[0], vibrantPixel[1], vibrantPixel[2]), true);
-                    });
+                    thumbAccentColor = toneHex(extractArtworkPalette(thumbSpecificImgObj, 1).accent);
+                    if (!isPlaying && !isRecording) drawStaticFrame();
                 };
                 thumbSpecificImgObj.src = url;
             } else {
@@ -515,48 +588,33 @@
 
         downloadThumbBtn.addEventListener('click', () => {
             const tCanvas = document.createElement('canvas');
-            tCanvas.width = 1920;
-            tCanvas.height = 1080;
+            const w = tCanvas.width = frameWidth;
+            const h = tCanvas.height = frameHeight;
             const tCtx = tCanvas.getContext('2d');
 
             const sourceImg = thumbSpecificImgObj.src ? thumbSpecificImgObj : bgImgObj;
             let currentAccent = thumbSpecificImgObj.src ? thumbAccentColor : accentGlowColor;
 
             if (sourceImg.src) {
-                let imgRatio = sourceImg.width / sourceImg.height;
-                let canvasRatio = 1920 / 1080;
-                let drawWidth, drawHeight, drawX, drawY;
-
-                if (imgRatio > canvasRatio) {
-                    drawHeight = 1080;
-                    drawWidth = sourceImg.width * (1080 / sourceImg.height);
-                    drawX = (1920 - drawWidth) / 2;
-                    drawY = 0;
-                } else {
-                    drawWidth = 1920;
-                    drawHeight = sourceImg.height * (1920 / sourceImg.width);
-                    drawX = 0;
-                    drawY = (1080 - drawHeight) / 2;
-                }
-                tCtx.drawImage(sourceImg, drawX, drawY, drawWidth, drawHeight);
+                tCtx.drawImage(sourceImg, ...artworkRect(sourceImg, w, h, 1));
             } else {
-                let grad = tCtx.createLinearGradient(0, 0, 1920, 1080);
+                let grad = tCtx.createLinearGradient(0, 0, w, h);
                 grad.addColorStop(0, '#1a1a2e');
                 grad.addColorStop(1, '#16213e');
                 tCtx.fillStyle = grad;
-                tCtx.fillRect(0, 0, 1920, 1080);
+                tCtx.fillRect(0, 0, w, h);
             }
 
-            let darkGrad = tCtx.createLinearGradient(0, 1080 * 0.5, 0, 1080);
+            let darkGrad = tCtx.createLinearGradient(0, h * 0.5, 0, h);
             darkGrad.addColorStop(0, 'transparent');
             darkGrad.addColorStop(1, 'rgba(0,0,0,0.85)');
             tCtx.fillStyle = darkGrad;
-            tCtx.fillRect(0, 1080 * 0.5, 1920, 1080 * 0.5);
+            tCtx.fillRect(0, h * 0.5, w, h * 0.5);
 
-            let thumbTitleSize = Math.floor(1080 * 0.26);
-            let thumbArtistSize = Math.floor(1080 * 0.05);
-            let bottomMargin = 1080 * 0.95;
-            let maxTextWidth = 1920 * 0.95;
+            let thumbTitleSize = Math.floor(portrait ? w * 0.14 : h * 0.26);
+            let thumbArtistSize = Math.floor(portrait ? w * 0.05 : h * 0.05);
+            let bottomMargin = h * 0.95;
+            let maxTextWidth = w * 0.95;
 
             tCtx.textAlign = "center";
             tCtx.lineJoin = 'round';
@@ -569,14 +627,14 @@
             tCtx.shadowOffsetY = 5;
             tCtx.lineWidth = thumbArtistSize * 0.20;
             tCtx.strokeStyle = "black";
-            tCtx.strokeText(thumbArtist.value.toUpperCase(), 1920 / 2, bottomMargin - thumbTitleSize - 5, maxTextWidth);
+            tCtx.strokeText(thumbArtist.value.toUpperCase(), w / 2, bottomMargin - thumbTitleSize - 5, maxTextWidth);
 
             tCtx.shadowColor = "transparent";
             tCtx.lineWidth = thumbArtistSize * 0.08;
             tCtx.strokeStyle = currentAccent;
-            tCtx.strokeText(thumbArtist.value.toUpperCase(), 1920 / 2, bottomMargin - thumbTitleSize - 5, maxTextWidth);
+            tCtx.strokeText(thumbArtist.value.toUpperCase(), w / 2, bottomMargin - thumbTitleSize - 5, maxTextWidth);
             tCtx.fillStyle = "white";
-            tCtx.fillText(thumbArtist.value.toUpperCase(), 1920 / 2, bottomMargin - thumbTitleSize - 5, maxTextWidth);
+            tCtx.fillText(thumbArtist.value.toUpperCase(), w / 2, bottomMargin - thumbTitleSize - 5, maxTextWidth);
 
             tCtx.font = `italic 700 ${thumbTitleSize}px 'Oswald', sans-serif`;
             tCtx.shadowColor = "rgba(0,0,0,0.9)";
@@ -585,14 +643,14 @@
             tCtx.shadowOffsetY = 8;
             tCtx.lineWidth = thumbTitleSize * 0.22;
             tCtx.strokeStyle = "black";
-            tCtx.strokeText(thumbTitle.value.toUpperCase(), 1920 / 2, bottomMargin, maxTextWidth);
+            tCtx.strokeText(thumbTitle.value.toUpperCase(), w / 2, bottomMargin, maxTextWidth);
 
             tCtx.shadowColor = "transparent";
             tCtx.lineWidth = thumbTitleSize * 0.10;
             tCtx.strokeStyle = currentAccent;
-            tCtx.strokeText(thumbTitle.value.toUpperCase(), 1920 / 2, bottomMargin, maxTextWidth);
+            tCtx.strokeText(thumbTitle.value.toUpperCase(), w / 2, bottomMargin, maxTextWidth);
             tCtx.fillStyle = "white";
-            tCtx.fillText(thumbTitle.value.toUpperCase(), 1920 / 2, bottomMargin, maxTextWidth);
+            tCtx.fillText(thumbTitle.value.toUpperCase(), w / 2, bottomMargin, maxTextWidth);
 
             const link = document.createElement('a');
             link.download = 'Nightcore_Miniaturka_HD.jpg';
@@ -600,224 +658,359 @@
             link.click();
         });
 
+        function drawArtwork(image, geometry = image) {
+            ctx.drawImage(image, ...artworkRect(geometry, canvas.width, canvas.height, artworkOverscan));
+        }
+
         function drawBackground() {
-            let imgToDraw = (currentMode === 'thumb' && thumbSpecificImgObj.src) ? thumbSpecificImgObj : bgImgObj;
+            const image = currentMode === 'thumb' && thumbSpecificImgObj.naturalWidth ? thumbSpecificImgObj : bgImgObj;
+            if (image.naturalWidth) return drawArtwork(image);
+            const grad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+            grad.addColorStop(0, '#1a1a2e');
+            grad.addColorStop(1, '#16213e');
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
 
-            if (imgToDraw.src) {
-                let imgRatio = imgToDraw.width / imgToDraw.height;
-                let canvasRatio = canvas.width / canvas.height;
-                let drawWidth, drawHeight, drawX, drawY;
-
-                const overshootX = canvas.width * 0.10;
-                const overshootY = canvas.height * 0.10;
-
-                if (imgRatio > canvasRatio) {
-                    drawHeight = canvas.height + overshootY;
-                    drawWidth = imgToDraw.width * (drawHeight / imgToDraw.height);
-                    drawX = (canvas.width - drawWidth) / 2;
-                    drawY = -overshootY/2;
-                } else {
-                    drawWidth = canvas.width + overshootX;
-                    drawHeight = imgToDraw.height * (drawWidth / imgToDraw.width);
-                    drawX = -overshootX/2;
-                    drawY = (canvas.height - drawHeight) / 2;
-                }
-                ctx.drawImage(imgToDraw, drawX, drawY, drawWidth, drawHeight);
-            } else {
-                let grad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
-                grad.addColorStop(0, '#1a1a2e');
-                grad.addColorStop(1, '#16213e');
-                ctx.fillStyle = grad;
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-            }
-
-            let darkGrad = ctx.createLinearGradient(0, canvas.height * 0.5, 0, canvas.height);
-            darkGrad.addColorStop(0, 'transparent');
-            darkGrad.addColorStop(1, 'rgba(0,0,0,0.85)');
-            ctx.fillStyle = darkGrad;
+        function drawBottomShade() {
+            const colors = visualizerPaint();
+            ctx.fillStyle = currentMode === 'thumb' ? colors.thumbShade : colors.shade;
             ctx.fillRect(0, canvas.height * 0.5, canvas.width, canvas.height * 0.5);
         }
 
-        function drawText() {
-            let titleSize = currentMode === 'thumb' ? Math.floor(canvas.height * 0.26) : Math.floor(canvas.height * 0.07);
-            let artistSize = currentMode === 'thumb' ? Math.floor(canvas.height * 0.05) : Math.floor(canvas.height * 0.025);
-            let bottomMargin = canvas.height * 0.95;
-            let maxTextWidth = canvas.width * 0.95;
-
-            let displayArtist = currentMode === 'thumb' ? thumbArtist.value : artistInput.value;
-            let displayTitle = currentMode === 'thumb' ? thumbTitle.value : titleInput.value;
-            let currentAccent = (currentMode === 'thumb' && thumbSpecificImgObj.src) ? thumbAccentColor : accentGlowColor;
-
-            ctx.textAlign = "center";
-            ctx.lineJoin = 'round';
-            ctx.miterLimit = 2;
-
-            if (currentMode === 'thumb') {
-                ctx.font = `italic 400 ${artistSize}px 'Oswald', sans-serif`;
-                ctx.shadowColor = "rgba(0,0,0,0.9)";
-                ctx.shadowBlur = 10;
-                ctx.shadowOffsetX = 5;
-                ctx.shadowOffsetY = 5;
-                ctx.lineWidth = artistSize * 0.20;
-                ctx.strokeStyle = "black";
-                ctx.strokeText(displayArtist.toUpperCase(), canvas.width / 2, bottomMargin - titleSize - 5, maxTextWidth);
-                ctx.shadowColor = "transparent";
-                ctx.lineWidth = artistSize * 0.08;
-                ctx.strokeStyle = currentAccent;
-                ctx.strokeText(displayArtist.toUpperCase(), canvas.width / 2, bottomMargin - titleSize - 5, maxTextWidth);
-                ctx.fillStyle = "white";
-                ctx.fillText(displayArtist.toUpperCase(), canvas.width / 2, bottomMargin - titleSize - 5, maxTextWidth);
-            } else {
-                ctx.font = `400 ${artistSize}px 'Oswald', sans-serif`;
-                ctx.shadowColor = "rgba(0,0,0,0.8)";
-                ctx.shadowBlur = 4;
-                ctx.shadowOffsetX = 1;
-                ctx.shadowOffsetY = 1;
-                ctx.fillStyle = "rgba(255,255,255,0.85)";
-                ctx.fillText(displayArtist.toUpperCase(), canvas.width / 2, bottomMargin - titleSize - 15, maxTextWidth);
-            }
-
-            if (currentMode === 'thumb') {
-                ctx.font = `italic 700 ${titleSize}px 'Oswald', sans-serif`;
-                ctx.shadowColor = "rgba(0,0,0,0.9)";
-                ctx.shadowBlur = 20;
-                ctx.shadowOffsetX = 8;
-                ctx.shadowOffsetY = 8;
-                ctx.lineWidth = titleSize * 0.22;
-                ctx.strokeStyle = "black";
-                ctx.strokeText(displayTitle.toUpperCase(), canvas.width / 2, bottomMargin, maxTextWidth);
-                ctx.shadowColor = "transparent";
-                ctx.lineWidth = titleSize * 0.10;
-                ctx.strokeStyle = currentAccent;
-                ctx.strokeText(displayTitle.toUpperCase(), canvas.width / 2, bottomMargin, maxTextWidth);
-                ctx.fillStyle = "white";
-                ctx.fillText(displayTitle.toUpperCase(), canvas.width / 2, bottomMargin, maxTextWidth);
-            } else {
-                ctx.font = `700 ${titleSize}px 'Oswald', sans-serif`;
-                ctx.shadowColor = "rgba(0,0,0,0.8)";
-                ctx.shadowBlur = 4;
-                ctx.shadowOffsetX = 1;
-                ctx.shadowOffsetY = 1;
-                ctx.fillStyle = "white";
-                ctx.fillText(displayTitle.toUpperCase(), canvas.width / 2, bottomMargin, maxTextWidth);
-            }
+        function applyArtworkCamera(scale, x, y) {
+            ctx.translate(canvas.width / 2, canvas.height / 2);
+            ctx.scale(scale, scale);
+            ctx.translate(-canvas.width / 2 + x, -canvas.height / 2 + y);
         }
 
-        function wrapLyricText(text, maxWidth, maxLines) {
-            const words = String(text || "").trim().split(/\s+/).filter(Boolean);
-            const lines = [];
-            let currentLine = "";
+        function drawMovingBackground(scale, x, y) {
+            ctx.save();
+            if (bgImgObj.naturalWidth) applyArtworkCamera(scale, x, y);
+            drawBackground();
+            ctx.restore();
+            // The shading belongs to the screen, not to the moving artwork.
+            drawBottomShade();
+        }
 
-            words.forEach(word => {
-                const candidate = currentLine ? `${currentLine} ${word}` : word;
-                if (ctx.measureText(candidate).width <= maxWidth || !currentLine) {
-                    currentLine = candidate;
-                    return;
+        function currentLyrics() {
+            const input = window.__nightcoreLyrics;
+            if (!window.__nightcoreLyricsOptions?.enabled || !Array.isArray(input)) return [];
+            if (lyricsInput !== input) {
+                lyricsInput = input;
+                lyricCues = input.filter(cue => cue && Number.isFinite(cue.start) && Number.isFinite(cue.end)
+                    && cue.end > cue.start && typeof cue.text === 'string' && cue.text.trim())
+                    .map(({start, end, text}) => ({start, end, text: text.trim()}))
+                    .sort((a, b) => a.start - b.start);
+                for (let i = 0; i + 1 < lyricCues.length; i++) {
+                    lyricCues[i].end = Math.min(lyricCues[i].end, lyricCues[i + 1].start);
                 }
-                lines.push(currentLine);
-                currentLine = word;
-            });
-
-            if (currentLine) lines.push(currentLine);
-            if (lines.length <= maxLines) return lines;
-
-            const trimmed = lines.slice(0, maxLines);
-            trimmed[maxLines - 1] = `${trimmed[maxLines - 1]}...`;
-            return trimmed;
+            }
+            return lyricCues;
         }
 
-        function getActiveLyric(currentTime) {
-            const lyrics = Array.isArray(window.__nightcoreLyrics) ? window.__nightcoreLyrics : [];
-            return lyrics.find(line => currentTime >= line.start - 0.04 && currentTime <= line.end + 0.04);
+        function drawLyricBand(scale = 1, x = 0, y = 0) {
+            if (!bgImgObj.naturalWidth) return;
+            if (!blurredArtwork) {
+                const texture = document.createElement('canvas');
+                const ratio = Math.min(1, 720 / Math.max(bgImgObj.naturalWidth, bgImgObj.naturalHeight));
+                texture.width = Math.max(1, Math.round(bgImgObj.naturalWidth * ratio));
+                texture.height = Math.max(1, Math.round(bgImgObj.naturalHeight * ratio));
+                const blurCtx = texture.getContext('2d');
+                blurCtx.drawImage(bgImgObj, 0, 0, texture.width, texture.height);
+                blurCtx.filter = 'blur(3px)';
+                blurCtx.drawImage(bgImgObj, 0, 0, texture.width, texture.height);
+                blurredArtwork = texture;
+            }
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(0, 0, canvas.width, lyricBandHeight);
+            ctx.clip();
+            applyArtworkCamera(scale, x, y);
+            drawArtwork(blurredArtwork, bgImgObj);
+            ctx.restore();
+            const colors = visualizerPaint();
+            ctx.fillStyle = colors.lyricTint;
+            ctx.fillRect(0, 0, canvas.width, lyricBandHeight);
+            ctx.fillStyle = colors.lyricRule;
+            ctx.fillRect(0, lyricBandHeight - 1, canvas.width, 1);
         }
 
-        function drawLyrics() {
-            const options = window.__nightcoreLyricsOptions || {};
-            if (currentMode !== 'vis' || options.enabled === false) return;
+        function drawLyrics(cues, time) {
+            let lo = 0, hi = cues.length;
+            while (lo < hi) {
+                const mid = (lo + hi) >>> 1;
+                if (cues[mid].start <= time) lo = mid + 1;
+                else hi = mid;
+            }
+            const cue = cues[lo - 1];
+            if (!cue || time >= cue.end) return;
+            const fade = Math.min(0.20, (cue.end - cue.start) / 3);
+            const t = Math.max(0, Math.min(1, (time - cue.start) / fade, (cue.end - time) / fade));
+            if (!t) return;
+            ctx.save();
+            ctx.globalAlpha = t * t * (3 - 2 * t);
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillStyle = '#f9fbff';
+            ctx.letterSpacing = '0.5px';
+            ctx.shadowColor = visualizerPaint().lyricShadow;
+            ctx.shadowBlur = 8;
+            ctx.shadowOffsetX = 0;
+            ctx.shadowOffsetY = 2;
+            const maxWidth = canvas.width * (portrait ? 0.78 : 0.91);
+            const centerX = canvas.width * (portrait ? 0.47 : 0.50);
+            const font = size => `600 ${size}px "Quicksand", sans-serif`;
+            ctx.font = font(55);
+            const width = ctx.measureText(cue.text).width;
+            if (width * 45 / 55 <= maxWidth) {
+                ctx.font = font(Math.min(55, 55 * maxWidth / Math.max(1, width)));
+                ctx.fillText(cue.text, centerX, lyricCenter, maxWidth);
+            } else {
+                ctx.font = font(39);
+                const words = cue.text.split(/\s+/);
+                let best = null;
+                for (let i = 1; i < words.length; i++) {
+                    const first = words.slice(0, i).join(' '), second = words.slice(i).join(' ');
+                    const widest = Math.max(ctx.measureText(first).width, ctx.measureText(second).width);
+                    if (!best || widest < best.widest) best = {first, second, widest};
+                }
+                if (best) {
+                    ctx.fillText(best.first, centerX, lyricCenter - 21, maxWidth);
+                    ctx.fillText(best.second, centerX, lyricCenter + 21, maxWidth);
+                } else ctx.fillText(cue.text, centerX, lyricCenter, maxWidth);
+            }
+            ctx.restore();
+        }
 
-            const activeLyric = getActiveLyric(audio.currentTime || 0);
-            if (!activeLyric) return;
+        function drawFilmTitle(reveal, pulse) {
+            const title = titleInput.value.trim().replace(/\s+/g, ' ').toUpperCase();
+            if (!title || reveal <= 0) return;
+            const w = canvas.width, h = canvas.height, colors = visualizerPaint();
+            ctx.save();
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'middle';
+            ctx.letterSpacing = '0.7px';
 
-            const now = audio.currentTime || 0;
-            const fadeSeconds = 0.24;
-            const fadeIn = Math.min(1, Math.max(0, (now - activeLyric.start) / fadeSeconds));
-            const fadeOut = Math.min(1, Math.max(0, (activeLyric.end - now) / fadeSeconds));
-            const alpha = Math.min(fadeIn, fadeOut, 1);
-            if (alpha <= 0) return;
+            const key = `${w}:${h}:${title}`;
+            if (filmTitleLayout?.key !== key) {
+                const words = title.match(/^(.+) (\S+)$/u);
+                const lead = words ? words[1] : title, tail = words ? words[2] : '';
+                const maxWidth = w * (portrait ? 0.72 : 0.76);
+                let size = Math.round(portrait ? w * 0.068 : h * 0.0593);
+                const measure = () => {
+                    ctx.font = `650 ${size}px "Plus Jakarta Sans", sans-serif`;
+                    const leadWidth = ctx.measureText(lead).width;
+                    const gap = tail ? size * 0.24 : 0;
+                    return {leadWidth, gap, width: leadWidth + gap + ctx.measureText(tail).width};
+                };
+                let layout = measure();
+                if (layout.width > maxWidth) {
+                    size = Math.max(32, Math.floor(size * maxWidth / layout.width));
+                    layout = measure();
+                }
+                filmTitleLayout = {
+                    key, lead, tail, size,
+                    font: ctx.font, width: layout.width,
+                    tailStart: layout.leadWidth + layout.gap,
+                    scaleX: Math.min(1, maxWidth / layout.width),
+                };
+            }
+            const {lead, tail, size, font, width, tailStart, scaleX} = filmTitleLayout;
+            ctx.translate(w * (portrait ? 0.47 : 0.5), h * (portrait ? 0.817 : 0.943) + (1 - reveal) * 9);
+            ctx.scale(scaleX, 1);
+            ctx.globalAlpha *= reveal;
+            ctx.font = font;
+            const face = ctx.createLinearGradient(0, -size * 0.35, 0, size * 0.35);
+            face.addColorStop(0, '#ffffff');
+            face.addColorStop(0.55, '#f7f7f7');
+            face.addColorStop(1, colors.titleShade);
+            ctx.fillStyle = face;
+            if (!tail && pulse > 0) {
+                ctx.shadowColor = colors.titleGlow(pulse * 0.44);
+                ctx.shadowBlur = pulse * 13;
+            }
+            ctx.fillText(lead, -width / 2, 0);
+            if (tail) {
+                const x = tailStart - width / 2;
+                ctx.fillStyle = colors.titleInside;
+                ctx.fillText(tail, x, 0);
+                ctx.lineWidth = Math.max(1.6, size * 0.034);
+                ctx.lineJoin = 'round';
+                ctx.strokeStyle = colors.titleEdge;
+                ctx.shadowColor = colors.titleGlow(0.24 + pulse * 0.46);
+                ctx.shadowBlur = 6 + pulse * 9;
+                ctx.strokeText(tail, x, 0);
+            }
+            ctx.restore();
+        }
 
-            const fontSize = Math.max(42, Math.floor(canvas.height * 0.054));
-            const lineHeight = fontSize * 1.08;
-            const maxWidth = canvas.width * 0.82;
+        function drawText(reveal = 1, pulse = 0) {
+            if (currentMode !== 'thumb') return drawFilmTitle(reveal, pulse);
+            const titleSize = Math.floor(portrait ? canvas.width * 0.14 : canvas.height * 0.26);
+            const artistSize = Math.floor(portrait ? canvas.width * 0.05 : canvas.height * 0.05);
+            const bottom = canvas.height * 0.95, maxWidth = canvas.width * 0.95, center = canvas.width / 2;
+            const artist = thumbArtist.value.toUpperCase(), title = thumbTitle.value.toUpperCase();
+            const accent = thumbSpecificImgObj.src ? thumbAccentColor : accentGlowColor;
+            const artistY = bottom - titleSize - 5;
 
             ctx.save();
-            ctx.globalAlpha = alpha;
-            ctx.textAlign = "center";
-            ctx.textBaseline = "middle";
-            ctx.lineJoin = "round";
-            ctx.font = `700 ${fontSize}px 'Oswald', sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.lineJoin = 'round';
+            ctx.miterLimit = 2;
+            ctx.font = `italic 400 ${artistSize}px 'Oswald', sans-serif`;
+            ctx.shadowColor = 'rgba(0,0,0,0.9)';
+            ctx.shadowBlur = 10;
+            ctx.shadowOffsetX = 5;
+            ctx.shadowOffsetY = 5;
+            ctx.lineWidth = artistSize * 0.20;
+            ctx.strokeStyle = 'black';
+            ctx.strokeText(artist, center, artistY, maxWidth);
+            ctx.shadowColor = 'transparent';
+            ctx.lineWidth = artistSize * 0.08;
+            ctx.strokeStyle = accent;
+            ctx.strokeText(artist, center, artistY, maxWidth);
+            ctx.fillStyle = 'white';
+            ctx.fillText(artist, center, artistY, maxWidth);
 
-            const lines = wrapLyricText(activeLyric.text.toUpperCase(), maxWidth, 2);
-            const bandHeight = Math.max(canvas.height * 0.092, lines.length * lineHeight + fontSize * 0.55);
-            const centerY = bandHeight / 2;
-            const startY = centerY - ((lines.length - 1) * lineHeight) / 2;
+            ctx.font = `italic 700 ${titleSize}px 'Oswald', sans-serif`;
+            ctx.shadowColor = 'rgba(0,0,0,0.9)';
+            ctx.shadowBlur = 20;
+            ctx.shadowOffsetX = 8;
+            ctx.shadowOffsetY = 8;
+            ctx.lineWidth = titleSize * 0.22;
+            ctx.strokeStyle = 'black';
+            ctx.strokeText(title, center, bottom, maxWidth);
+            ctx.shadowColor = 'transparent';
+            ctx.lineWidth = titleSize * 0.10;
+            ctx.strokeStyle = accent;
+            ctx.strokeText(title, center, bottom, maxWidth);
+            ctx.fillText(title, center, bottom, maxWidth);
+            ctx.restore();
+        }
 
-            ctx.shadowBlur = 0;
-            ctx.fillStyle = "rgba(0,0,0,0.34)";
-            ctx.fillRect(0, 0, canvas.width, bandHeight);
-            ctx.fillStyle = "rgba(255,255,255,0.16)";
-            ctx.fillRect(0, bandHeight - 1, canvas.width, 1);
+        function visualizerPaint() {
+            const w = canvas.width, h = canvas.height;
+            const key = `${w}:${h}`;
+            if (visualizerPaintCache?.key === key) return visualizerPaintCache;
+            const {accent, support} = artworkPalette;
+            const reflected = describeRgb(...accent.rgb.map((channel, i) => channel * 0.81 + support.rgb[i] * 0.19));
+            // Set contrast separately from hue so dark artwork still produces a readable rim.
+            const tone = ({hue, saturation}, light, gain, alpha = 1) => {
+                const sat = Math.min(0.94, saturation * gain);
+                return `hsl(${Math.round(hue)} ${Math.round(sat * 100)}% ${light * 100}% / ${alpha})`;
+            };
+            const bottomShade = color => {
+                const gradient = ctx.createLinearGradient(0, h * 0.5, 0, h);
+                gradient.addColorStop(0, 'transparent');
+                gradient.addColorStop(1, color);
+                return gradient;
+            };
+            const ink = ctx.createLinearGradient(0, h * 0.70, 0, h);
+            ink.addColorStop(0, tone(accent, 0.145, 0.80, 0.97));
+            if (portrait) ink.addColorStop(0.48, tone(accent, 0.092, 0.64, 0.94));
+            ink.addColorStop(1, tone(accent, 0.076, 0.58, portrait ? 0.58 : 1));
+            const lightX = w * (portrait ? 0.47 : 0.5);
+            const lightY = h * (portrait ? 0.93 : 1.12);
+            const underlight = ctx.createRadialGradient(lightX, lightY, h * 0.05, lightX, lightY, w * (portrait ? 0.48 : 0.30));
+            underlight.addColorStop(0, tone(reflected, 0.32, 0.86, 0.48));
+            underlight.addColorStop(0.58, tone(reflected, 0.30, 0.76, 0.21));
+            underlight.addColorStop(1, tone(reflected, 0.30, 0.76, 0));
+            visualizerPaintCache = {
+                key, ink, underlight,
+                shade: bottomShade(tone(accent, 0.028, 0.64, 0.85)),
+                thumbShade: bottomShade('rgba(0,0,0,0.85)'),
+                halo: tone(accent, 0.54, 1.20, 0.46),
+                edge: tone(accent, 0.73, 1.16),
+                titleShade: tone(reflected, 0.86, 0.60),
+                titleInside: tone(accent, 0.55, 0.78, 0.14),
+                titleEdge: tone(accent, 0.80, 1.05),
+                titleGlow: alpha => tone(accent, 0.61, 1.15, alpha),
+                lyricTint: tone(accent, 0.095, 0.70, 0.23),
+                lyricRule: tone(accent, 0.74, 0.95, 0.45),
+                lyricShadow: tone(accent, 0.04, 0.66, 0.88),
+                introGlow: tone(accent, 0.53, 1.16),
+                introShade: alpha => tone(accent, 0.046, 0.66, alpha),
+            };
+            return visualizerPaintCache;
+        }
 
-            lines.forEach((line, index) => {
-                const y = startY + index * lineHeight;
-                ctx.shadowColor = "rgba(0,0,0,0.85)";
-                ctx.shadowBlur = 12;
-                ctx.lineWidth = fontSize * 0.22;
-                ctx.strokeStyle = "rgba(0,0,0,0.95)";
-                ctx.strokeText(line, canvas.width / 2, y, maxWidth);
-
-                ctx.shadowColor = accentGlowColor;
-                ctx.shadowBlur = 24;
-                ctx.lineWidth = fontSize * 0.08;
-                ctx.strokeStyle = accentGlowColor;
-                ctx.strokeText(line, canvas.width / 2, y, maxWidth);
-
-                ctx.shadowBlur = 0;
-                ctx.fillStyle = "white";
-                ctx.fillText(line, canvas.width / 2, y, maxWidth);
-            });
-
+        function drawSpectrum(data, hzToBin = 1) {
+            const w = canvas.width, h = canvas.height, column = w / spectrumColumns;
+            if (data) {
+                for (let i = 0; i < spectrumColumns; i++) {
+                    const lane = spectrumLanes[i];
+                    const bin = Math.min(data.length - 1, Math.round(lane.hz * hzToBin));
+                    const level = Math.max(0, (data[bin] / 255 - 0.22) / 0.78);
+                    const onset = Math.max(0, level - spectrumBed[i]);
+                    spectrumBed[i] += (level - spectrumBed[i]) * 0.055;
+                    const target = Math.min(w, h) * lane.gain * Math.min(1, 0.93 * level ** 2.05 + 0.55 * onset);
+                    const response = target > spectrumLevels[i] ? 0.70 : 0.23;
+                    spectrumLevels[i] += (target - spectrumLevels[i]) * response;
+                }
+            }
+            const edge = new Path2D();
+            const edgeY = portrait ? 0.812 : 0.975;
+            const arcDepth = portrait ? 0.058 : 0.102;
+            for (let i = 0; i < spectrumColumns; i++) {
+                const x = Math.round(i * column), xEnd = Math.round((i + 1) * column);
+                const u = (i + 0.5) / spectrumColumns;
+                const baseline = h * (edgeY - arcDepth * Math.sin(Math.PI * u) ** 1.56);
+                const grouped = spectrumLevels[i] * 0.54 + 0.23 * (
+                    spectrumLevels[Math.max(0, i - 1)] + spectrumLevels[Math.min(spectrumColumns - 1, i + 1)]
+                );
+                const amp = data ? Math.round(grouped / 2) * 2 : 0;
+                const y = Math.round(baseline) - amp;
+                // Hold the height across the entire column; change it only at the shared boundary.
+                if (i === 0) edge.moveTo(x, y);
+                else edge.lineTo(x, y);
+                edge.lineTo(xEnd, y);
+            }
+            const base = new Path2D(edge), colors = visualizerPaint();
+            base.lineTo(w, h + 1);
+            base.lineTo(0, h + 1);
+            base.closePath();
+            ctx.save();
+            ctx.shadowColor = 'transparent';
+            ctx.fillStyle = colors.ink;
+            ctx.fill(base);
+            ctx.fillStyle = colors.underlight;
+            ctx.fill(base);
+            ctx.lineJoin = 'round';
+            ctx.lineCap = 'round';
+            ctx.strokeStyle = colors.halo;
+            ctx.lineWidth = 6;
+            ctx.stroke(edge);
+            ctx.lineJoin = 'miter';
+            ctx.miterLimit = 2;
+            ctx.strokeStyle = colors.edge;
+            ctx.lineWidth = 2.5;
+            ctx.stroke(edge);
             ctx.restore();
         }
 
         function drawStaticFrame() {
             ctx.setTransform(1, 0, 0, 1, 0, 0);
             ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.shadowColor = 'transparent';
 
             drawBackground();
+            drawBottomShade();
 
             if (currentMode === 'vis') {
-                ctx.shadowBlur = 25;
-                ctx.shadowColor = accentGlowColor;
-                ctx.beginPath();
-                ctx.moveTo(0, canvas.height + 10);
-                ctx.lineTo(0, canvas.height - 5);
-                ctx.lineTo(canvas.width, canvas.height - 5);
-                ctx.lineTo(canvas.width, canvas.height + 10);
-                ctx.closePath();
-                ctx.fillStyle = "rgba(10, 10, 10, 0.95)";
-                ctx.fill();
-                ctx.lineWidth = 4;
-                ctx.strokeStyle = accentGlowColor;
-                ctx.stroke();
-                ctx.shadowBlur = 0;
+                if (currentLyrics().length) drawLyricBand();
+                drawSpectrum();
             }
 
             drawText();
-            drawLyrics();
         }
 
         audioUpload.addEventListener('change', function() {
             if (this.files[0]) {
+                spectrumLevels.fill(0);
+                spectrumBed.fill(0);
+                bassBed = 0;
+                titlePulse = 0;
                 const url = URL.createObjectURL(this.files[0]);
                 audio.src = url;
                 audio.load();
@@ -837,10 +1030,11 @@
             if (!audioCtx) {
                 audioCtx = new (window.AudioContext || window.webkitAudioContext)();
                 analyser = audioCtx.createAnalyser();
-                analyser.fftSize = 256;
-                analyser.maxDecibels = 0;
-                analyser.minDecibels = -85;
-                analyser.smoothingTimeConstant = 0.85;
+                analyser.fftSize = 2048;
+                analyser.maxDecibels = -18;
+                analyser.minDecibels = -88;
+                analyser.smoothingTimeConstant = 0.63;
+                frequencyData = new Uint8Array(analyser.frequencyBinCount);
 
                 source = audioCtx.createMediaElementSource(audio);
                 source.connect(analyser);
@@ -915,14 +1109,15 @@
                     const a = document.createElement('a');
                     a.style.display = 'none';
                     a.href = url;
-                    a.download = 'nightcore_visualizer_fullHD.webm';
+                    a.download = 'syrex_visualizer_fullHD.webm';
                     document.body.appendChild(a);
                     a.click();
                     window.URL.revokeObjectURL(url);
                 };
 
                 recordStartTime = performance.now();
-                showIntro = true;
+                // Short clips open on the song excerpt with the visualizer already in view.
+                showIntro = !portrait;
 
                 mediaRecorder.start(1000);
                 audio.play();
@@ -944,21 +1139,23 @@
             // Zabezpieczenie pętli
             animationFrameId = requestAnimationFrame(drawVisualizerLoop);
 
-            const bufferLength = analyser.frequencyBinCount;
-            const dataArray = new Uint8Array(bufferLength);
-            analyser.getByteFrequencyData(dataArray);
-
+            analyser.getByteFrequencyData(frequencyData);
+            const hzToBin = analyser.fftSize / audioCtx.sampleRate;
+            const bassStart = Math.max(1, Math.ceil(44 * hzToBin));
+            const bassEnd = Math.max(bassStart, Math.floor(228 * hzToBin));
             let bassSum = 0;
-            for(let i=0; i<4; i++) {
-                bassSum += dataArray[i];
-            }
-            let bassAvg = (bassSum / 4) / 255;
+            for (let i = bassStart; i <= bassEnd; i++) bassSum += frequencyData[i];
+            const bassAvg = bassSum / (255 * (bassEnd - bassStart + 1));
+            const bassHit = Math.min(1, Math.max(0, (bassAvg - bassBed - 0.025) * 5));
+            bassBed += (bassAvg - bassBed) * 0.06;
+            titlePulse += (bassHit - titlePulse) * (bassHit > titlePulse ? 0.55 : 0.16);
 
             let targetScale = 1.0 + Math.pow(bassAvg, 4) * 0.02;
             currentScale += (targetScale - currentScale) * 0.4;
 
             ctx.setTransform(1, 0, 0, 1, 0, 0);
             ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.shadowColor = 'transparent';
 
             let introBgAlpha = 0;
             let textAlpha = 0;
@@ -1031,75 +1228,22 @@
             const driftX = Math.sin(motionTime * 0.3) * 7;
             const driftY = Math.cos(motionTime * 0.4) * 4;
 
-            ctx.save();
-            ctx.translate(canvas.width / 2, canvas.height / 2);
-            ctx.scale(currentScale, currentScale);
-            ctx.translate(-canvas.width / 2, -canvas.height / 2);
-            ctx.translate(driftX, driftY);
-
-            drawBackground();
-            ctx.restore();
+            drawMovingBackground(currentScale, driftX, driftY);
+            const cues = currentMode === 'vis' ? currentLyrics() : [];
+            if (cues.length) drawLyricBand(currentScale, driftX, driftY);
 
             ctx.filter = 'none';
 
-            const activeBins = 48;
-            const totalBins = activeBins * 4;
-            const barWidth = canvas.width / totalBins;
-
-            let heights = [];
-            for (let i = 0; i < activeBins; i++) {
-                let rawHeight = (dataArray[i * 2] + dataArray[i * 2 + 1]) / 2;
-                if (i < 3) rawHeight = Math.min(255, rawHeight * 1.1);
-
-                const normalized = rawHeight / 255.0;
-                let curve = Math.pow(normalized, 1.6);
-                let dampener = 1 - (i / activeBins) * 0.7;
-                let h = curve * dampener * canvas.height * 0.35;
-                if (h < 5) h = 5;
-                heights.push(h);
-            }
-
-            let fullHeights = [];
-            for(let i = activeBins - 1; i >= 0; i--) fullHeights.push(heights[i]);
-            for(let i = 0; i < activeBins; i++) fullHeights.push(heights[i]);
-            for(let i = activeBins - 1; i >= 0; i--) fullHeights.push(heights[i]);
-            for(let i = 0; i < activeBins; i++) fullHeights.push(heights[i]);
-
-            ctx.shadowBlur = 25;
-            ctx.shadowColor = accentGlowColor;
-
-            ctx.beginPath();
-            const baseY = canvas.height + 10;
-            ctx.moveTo(0, baseY);
-
-            for (let i = 0; i < totalBins; i++) {
-                let h = fullHeights[i];
-                let y = canvas.height - h;
-                let x = i * barWidth;
-
-                ctx.lineTo(x, y);
-                ctx.lineTo(x + barWidth, y);
-            }
-
-            ctx.lineTo(canvas.width, baseY);
-            ctx.closePath();
-
-            ctx.fillStyle = "rgba(10, 10, 10, 0.95)";
-            ctx.fill();
-
-            ctx.lineWidth = 4;
-            ctx.strokeStyle = accentGlowColor;
-            ctx.stroke();
-
-            ctx.shadowBlur = 0;
-            drawText();
-            drawLyrics();
+            drawSpectrum(frequencyData, hzToBin);
+            const titleIn = Math.min(1, Math.max(0, (audio.currentTime - 0.08) / 0.64));
+            drawText(1 - (1 - titleIn) ** 3, titlePulse);
 
             if (showIntro && isRecording) {
                 ctx.save();
+                const colors = visualizerPaint();
 
                 if (introBgAlpha > 0) {
-                    ctx.fillStyle = `rgba(0, 0, 0, ${introBgAlpha})`;
+                    ctx.fillStyle = colors.introShade(introBgAlpha);
                     ctx.fillRect(0, 0, canvas.width, canvas.height);
                 }
 
@@ -1118,12 +1262,13 @@
                         }
 
                         ctx.fillStyle = "white";
-                        ctx.font = "700 120px 'Oswald', sans-serif";
-                        ctx.shadowColor = accentGlowColor;
+                        ctx.letterSpacing = '4px';
+                        ctx.font = '500 120px "Barlow Semi Condensed", sans-serif';
+                        ctx.shadowColor = colors.introGlow;
                         ctx.shadowBlur = 40;
                         ctx.fillText("SUBSCRIBE", canvas.width / 2, centerY + 30);
 
-                        ctx.font = "400 45px 'Oswald', sans-serif";
+                        ctx.font = '500 45px "Barlow Semi Condensed", sans-serif';
                         ctx.shadowBlur = 10;
                         ctx.fillText("TO THE CHANNEL", canvas.width / 2, centerY + 110);
                     }
@@ -1146,8 +1291,9 @@
                         ctx.globalAlpha = textAlpha;
                         ctx.textAlign = "center";
                         ctx.fillStyle = "white";
-                        ctx.font = "700 100px 'Oswald', sans-serif";
-                        ctx.shadowColor = accentGlowColor;
+                        ctx.letterSpacing = '4px';
+                        ctx.font = '500 100px "Barlow Semi Condensed", sans-serif';
+                        ctx.shadowColor = colors.introGlow;
                         ctx.shadowBlur = 30;
                         ctx.fillText("LISTEN ON", canvas.width / 2, startY - 80);
                     }
@@ -1179,10 +1325,15 @@
                 }
                 ctx.restore();
             }
+            if (cues.length) drawLyrics(cues, audio.currentTime);
         }
 
         updateTabColors();
         resizeCanvas();
+        window.__nightcoreFontsReady.then(() => {
+            filmTitleLayout = null;
+            if (!isPlaying && !isRecording) drawStaticFrame();
+        });
     </script>
 </body>
 </html>
